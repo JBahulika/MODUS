@@ -19,7 +19,7 @@ npm run dev
 
 Open http://localhost:3000
 
-Use **Load sample brief** for an instant example, or type your own question and click **Run research**.
+Pick an example query or type your own, then click **Run research**.
 
 ## What to enter
 
@@ -33,7 +33,7 @@ Example: `AI transformation opportunities for a mid-size retail bank in operatio
 
 ```text
 Next.js UI
-  → FastAPI (jobs, SSE, uploads, demo, PDF)
+  → FastAPI (jobs, SSE, uploads, PDF)
      → LangGraph
         Planner
           → Company | Industry | News

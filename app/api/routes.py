@@ -1,4 +1,4 @@
-"""FastAPI routes for research jobs, SSE progress, uploads, demo, and PDF."""
+"""FastAPI routes for research jobs, SSE progress, uploads, and PDF."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import asyncio
 import json
 import time
 import uuid
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
@@ -21,7 +20,6 @@ from app.report_enrichment import enrich_report
 from app.workflows.langgraph_workflow import run_research
 
 router = APIRouter()
-DEMO_PATH = Path(__file__).resolve().parents[1] / "samples" / "demo_brief.json"
 
 
 class ResearchRequest(BaseModel):
@@ -36,7 +34,6 @@ class ResearchStartResponse(BaseModel):
     query: str
     status: str
     cached: bool = False
-    demo: bool = False
 
 
 def _is_cacheable_report(report: dict[str, Any]) -> bool:
@@ -63,11 +60,6 @@ def _is_cacheable_report(report: dict[str, Any]) -> bool:
     if not has_recs and not has_opps and not has_context:
         return False
     return True
-
-
-def _load_demo_report() -> dict[str, Any]:
-    data = json.loads(DEMO_PATH.read_text(encoding="utf-8"))
-    return enrich_report(data, latency_ms=0)
 
 
 def _run_job(
@@ -141,28 +133,6 @@ async def upload_document(file: UploadFile = File(...)) -> dict[str, Any]:
     }
 
 
-@router.get("/demo")
-def get_demo() -> dict[str, Any]:
-    report = _load_demo_report()
-    job_id = "demo-retail-bank"
-    existing = sqlite_store.get_job(job_id)
-    if not existing:
-        sqlite_store.create_job(job_id, report["query"])
-    sqlite_store.save_report(job_id, report)
-    sqlite_store.add_event(job_id, "done", "Loaded polished sample brief.")
-    try:
-        generate_pdf(report, job_id)
-    except Exception:
-        pass
-    return {
-        "id": job_id,
-        "query": report["query"],
-        "status": "completed",
-        "report": report,
-        "demo": True,
-    }
-
-
 @router.post("/research", response_model=ResearchStartResponse)
 def start_research(
     body: ResearchRequest,
@@ -210,8 +180,6 @@ def list_research(limit: int = 20) -> list[dict[str, Any]]:
 
 @router.get("/research/{job_id}")
 def get_research(job_id: str) -> dict[str, Any]:
-    if job_id == "demo-retail-bank":
-        return get_demo()
     job = sqlite_store.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -270,10 +238,7 @@ async def research_events(job_id: str) -> EventSourceResponse:
 
 @router.get("/research/{job_id}/pdf")
 def download_pdf(job_id: str) -> FileResponse:
-    if job_id == "demo-retail-bank":
-        job = get_demo()
-    else:
-        job = sqlite_store.get_job(job_id)
+    job = sqlite_store.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     if job["status"] != "completed" or not job.get("report"):

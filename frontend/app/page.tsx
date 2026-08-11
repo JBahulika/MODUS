@@ -56,7 +56,6 @@ type Report = {
   eval?: Record<string, unknown>;
   what_if_assessment?: string;
   what_if?: string;
-  demo?: boolean;
 };
 
 type ProgressEvent = { step: string; message: string; status?: string };
@@ -106,7 +105,7 @@ export default function HomePage() {
   const activeStep = events.length ? events[events.length - 1].step : status;
 
   useEffect(() => {
-    if (!jobId || status === "completed" || status === "failed" || jobId === "demo-retail-bank") {
+    if (!jobId || status === "completed" || status === "failed") {
       return;
     }
     const source = new EventSource(`${API_URL}/research/${jobId}/events`);
@@ -118,7 +117,10 @@ export default function HomePage() {
         if (data.step === "done" || data.step === "completed") {
           setStatus("completed");
           source.close();
-          void fetchReport(jobId);
+          void fetchReport(jobId).catch((err) => {
+            setLoading(false);
+            setError(err instanceof Error ? err.message : "Could not load the brief");
+          });
         }
         if (data.step === "error" || data.step === "failed") {
           setStatus("failed");
@@ -147,28 +149,6 @@ export default function HomePage() {
     setLoading(false);
     setOpenRec(0);
     setViewMode("brief");
-  }
-
-  async function loadDemo() {
-    setError(null);
-    setEvents([]);
-    setLoading(true);
-    setStatus("completed");
-    try {
-      const res = await fetch(`${API_URL}/demo`);
-      if (!res.ok) throw new Error("Failed to load demo brief");
-      const data = await res.json();
-      setJobId(data.id);
-      setQuery(data.query || SAMPLE_QUERIES[0]);
-      setReport(data.report);
-      setLoading(false);
-      setOpenRec(0);
-      setViewMode("brief");
-    } catch (err) {
-      setLoading(false);
-      setStatus("failed");
-      setError(err instanceof Error ? err.message : "Demo failed");
-    }
   }
 
   async function onUpload(file: File | null) {
@@ -288,12 +268,9 @@ export default function HomePage() {
           <div>
             <p className="brand-mark">Research a transformation question</p>
             <p className="lede">
-              Start with the sample brief, or run a live research job.
+              Pick an example below or type your own, then run research.
             </p>
           </div>
-          <button type="button" className="ghost" onClick={loadDemo} disabled={busy}>
-            Load sample brief
-          </button>
         </header>
 
         <form className="composer" onSubmit={onSubmit}>
@@ -358,7 +335,7 @@ export default function HomePage() {
           </button>
         </form>
 
-        {(loading || events.length > 0) && !report?.demo && (
+        {(loading || events.length > 0) && (
           <div className="panel">
             <div className="panel-head">
               <h2>Agent timeline</h2>
@@ -389,7 +366,7 @@ export default function HomePage() {
           <div className="report">
             <div className="report-top">
               <div>
-                <p className="eyebrow">{report.demo ? "Sample brief" : "Brief"}</p>
+                <p className="eyebrow">Brief</p>
                 <h2>{report.subject || report.query}</h2>
               </div>
               <div className="report-actions">
