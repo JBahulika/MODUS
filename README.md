@@ -1,10 +1,85 @@
 # Enterprise AI Research Agent
 
-Transformation research agent for the MODUS Enterprise AI Build Challenge.
+An enterprise transformation research system. Submit a research question and receive a structured brief covering company context, industry signals, competitor AI moves, opportunity areas, risks, and recommendations with sources.
 
-Type a research question. Specialist agents gather company context, industry signals, news, competitor AI moves, and opportunity areas. A risk check runs next, then a synthesizer produces a brief with recommendations, rationales, sources, and PDF export.
+## What it does
 
-## Stack
+1. Accepts a free-text transformation research query
+2. Plans the research scope
+3. Runs specialist agents in parallel for company context, industry signals, and news
+4. Follows with competitor analysis and AI opportunity mapping
+5. Applies a risk and governance pass
+6. Synthesizes a decision-ready brief with recommendation rationales and citations
+7. Streams progress live and exports a PDF
+
+## Architecture
+
+```text
+Next.js UI
+  → FastAPI (job create, SSE progress, report, PDF)
+     → LangGraph orchestrator
+        Planner
+          → Company | Industry | News
+          → Competitors | AI Opportunities
+          → Risk / Governance
+          → Synthesizer
+     → SQLite (jobs, events, reports)
+     → Redis optional cache
+     → PDF export
+```
+
+### Major components
+
+| Component | Role |
+|-----------|------|
+| Next.js frontend | Query input, live progress, brief view, recommendation detail, PDF download |
+| FastAPI API | Job lifecycle, SSE events, report retrieval, PDF serving |
+| LangGraph workflow | Orchestrates planning, parallel research, risk check, and synthesis |
+| Research agents | Company, industry, news, competitors, opportunities, risk, synthesizer |
+| Tool adapters | Web search, news lookup, LLM structured JSON |
+| SQLite store | Durable jobs, event log, final report JSON |
+| Redis cache | Short-lived completed brief cache (optional) |
+| PDF module | ReportLab export of the final brief |
+
+## Information flow
+
+User submits a query → API creates a job and streams progress → planner defines scope → specialist agents gather evidence through tools and return structured findings with sources → risk agent reviews conflicts and confidence → synthesizer merges everything into one brief with recommendations, each carrying rationale, supporting findings, and source links → UI loads the completed report and optional PDF.
+
+## Data model
+
+**Stored permanently**
+- Research jobs and status
+- Final report JSON
+- Progress event log
+- Generated PDF files
+
+**Generated when required**
+- Agent intermediate notes
+- Live search and news results
+- Recommendations for a new query
+- SSE progress stream
+
+## Reliability and explainability
+
+- Agents gather evidence through tools before writing findings
+- Important points retain source URLs
+- Thin or conflicting evidence is surfaced in confidence notes and conflicts
+- Each recommendation includes rationale, supporting findings, source links, and confidence
+
+## Extensibility
+
+Agents and tools are separate modules with shared JSON contracts. The orchestrator only wires nodes and state. Adding a new specialist (for example a regulatory agent or an internal docs connector) means adding a module and graph edge, not redesigning the application. New datasets can be introduced through connectors and configuration while the core loop stays the same: plan → gather evidence → structure findings → synthesize.
+
+## Scale considerations
+
+The MVP runs research jobs inside the API process with SQLite. For much larger volume, the intended path is:
+- Move heavy work to a worker queue
+- Replace SQLite with Postgres
+- Keep Redis for cache and queue backing
+- Add rate limiting for external APIs
+- Keep the UI async with progress tracking
+
+## Tech stack
 
 | Layer | Choice |
 |-------|--------|
@@ -14,34 +89,20 @@ Type a research question. Specialist agents gather company context, industry sig
 | LLM | Google Gemini |
 | Search | Tavily → DuckDuckGo → Wikipedia |
 | News | NewsAPI with search fallback |
-| Storage | SQLite jobs/reports, Redis optional cache |
+| Storage | SQLite, Redis optional |
 | Export | ReportLab PDF |
-
-## Architecture
-
-```text
-User query → Next.js
-              → FastAPI job + SSE
-                 → LangGraph
-                    Planner
-                      → Company | Industry | News   (parallel)
-                      → Competitors | Opportunities (parallel)
-                      → Risk / Governance
-                      → Synthesizer
-                 → SQLite + optional Redis + PDF
-```
 
 ## Setup
 
-### 1. Backend
+### Backend
 
 ```bash
 cd P27_MODUS
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # if needed
-# set GOOGLE_API_KEY (required)
+cp .env.example .env
+# set GOOGLE_API_KEY
 # optional: TAVILY_API_KEY, NEWS_API_KEY, REDIS_URL
 chmod +x run_api.sh
 ./run_api.sh
@@ -56,7 +117,7 @@ Optional Redis:
 docker compose up -d
 ```
 
-### 2. Frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -67,37 +128,23 @@ npm run dev
 
 UI: http://localhost:3000
 
-## Sample queries
+## Example queries
 
 - AI transformation opportunities for a mid-size retail bank in operations
 - Enterprise AI opportunities in order-to-cash for a CPG company
 - How should a hospital system approach AI automation in clinical admin?
 
-## What gets stored
+## Project structure
 
-Permanent: research jobs, final report JSON, event log, PDFs  
-Generated on demand: agent working notes, live search results, recommendations for a new query
-
-## Interview talking points
-
-- Reliability: tools gather evidence first; sources stay on findings; thin evidence is called out
-- Explainability: each recommendation has rationale, supporting findings, and source links
-- Extensibility: new agents/tools plug into the graph without rewriting the app
-- Scale: move heavy work to a worker queue, SQLite → Postgres, keep Redis for cache/queue
-
-## MODUS form answers Q37–Q46
-
-See the challenge plan answers, or use this short map:
-
-| Question | Answer in this build |
-|----------|----------------------|
-| 37 Architecture | Next.js → FastAPI → LangGraph multi-agent → SQLite/Redis → PDF |
-| 38 Flow | Query → job/SSE → planner → specialist agents → risk → synthesizer → brief |
-| 39 Components | UI, API, orchestrator, agents, tools, store, cache, PDF |
-| 40 Persist vs generate | Jobs/reports/events/PDFs stored; intermediate research generated live |
-| 41 Databases | SQLite now; Redis cache; Postgres + vectors later at scale |
-| 42 Extensibility | Modular agents/tools + shared JSON contracts |
-| 43 Scale | Workers, Postgres, rate limits, async UI |
-| 44 Reliability | Tool-first evidence, sources, conflict/confidence notes |
-| 45 Explain recommendations | Rationale + supporting findings + source links in UI |
-| 46 New data without code change | Connector/config based inputs; core loop stays plan → gather → synthesize |
+```text
+app/
+  agents/       # planner, company, industry, news, competitor, opportunity, risk, synthesizer
+  api/          # REST + SSE routes
+  tools/        # LLM, search, news
+  memory/       # SQLite + Redis cache
+  workflows/    # LangGraph orchestration
+  pdf/          # PDF export
+frontend/       # Next.js UI
+data/           # local SQLite (gitignored)
+reports/        # generated PDFs (gitignored)
+```

@@ -367,8 +367,8 @@ export default function HomePage() {
           <article className="block">
             <h3>Recommendations</h3>
             <p className="hint">
-              Open a recommendation to see why it was made and which sources
-              support it.
+              Expand a recommendation for rationale, supporting findings, and
+              source links.
             </p>
             <div className="recs">
               {(report.recommendations || []).map((rec, idx) => {
