@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -10,14 +10,8 @@ const SAMPLE_QUERIES = [
   "How should a hospital system approach AI automation in clinical admin?",
 ];
 
-type ProgressEvent = {
-  step: string;
-  message: string;
-  status?: string;
-};
-
-type Source = { title?: string; url?: string };
-
+type Source = { id?: string; title?: string; url?: string; rank?: number };
+type Claim = { id?: string; text?: string; source_ids?: string[] };
 type Recommendation = {
   title?: string;
   priority?: string;
@@ -25,12 +19,20 @@ type Recommendation = {
   supporting_findings?: string[];
   sources?: Source[];
   confidence?: string;
+  roles?: string[];
 };
 
 type Report = {
   query?: string;
   subject?: string;
+  overall_confidence?: string;
+  confidence_score?: number;
   executive_summary?: string;
+  one_pager?: {
+    headline?: string;
+    three_moves?: string[];
+    watchouts?: string[];
+  };
   context?: {
     industry?: string;
     company_or_subject_summary?: string;
@@ -46,45 +48,90 @@ type Report = {
   ai_opportunities?: Array<Record<string, unknown>>;
   risks?: Array<Record<string, unknown> | string>;
   recommendations?: Recommendation[];
+  claims?: Claim[];
   conflicts?: string[];
   confidence_notes?: string[];
   sources?: Source[];
+  agent_contributions?: Array<{ agent?: string; summary?: string }>;
+  eval?: Record<string, unknown>;
+  roadmap?: { now?: string[]; next?: string[]; later?: string[] };
+  what_if_assessment?: string;
+  what_if?: string;
+  demo?: boolean;
 };
+
+type ProgressEvent = { step: string; message: string; status?: string };
+type HistoryItem = {
+  id: string;
+  query: string;
+  status: string;
+  created_at?: string;
+};
+type UploadedDoc = { id: string; filename: string; chars: number };
 
 const STEP_LABELS: Record<string, string> = {
   queued: "Queued",
   planning: "Planning",
-  company: "Company context",
-  industry: "Industry signals",
+  company: "Company",
+  industry: "Industry",
   news: "News",
   competitors: "Competitors",
-  opportunity: "AI opportunities",
-  risk: "Risk check",
-  summarizing: "Synthesizing",
+  opportunity: "Opportunities",
+  risk: "Risk",
+  documents: "Documents",
+  what_if: "Scenario",
+  summarizing: "Synthesis",
   done: "Done",
   error: "Error",
-  completed: "Completed",
+  completed: "Done",
   failed: "Failed",
 };
 
+const ROLES = [
+  { id: "all", label: "All roles" },
+  { id: "coo", label: "COO" },
+  { id: "risk", label: "Risk" },
+  { id: "transformation", label: "Transformation" },
+] as const;
+
 export default function HomePage() {
+  const [viewer, setViewer] = useState("guest");
+  const [viewerInput, setViewerInput] = useState("");
   const [query, setQuery] = useState(SAMPLE_QUERIES[0]);
+  const [whatIf, setWhatIf] = useState("");
+  const [docs, setDocs] = useState<UploadedDoc[]>([]);
   const [jobId, setJobId] = useState<string | null>(null);
-  const [status, setStatus] = useState<string>("idle");
+  const [status, setStatus] = useState("idle");
   const [events, setEvents] = useState<ProgressEvent[]>([]);
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [openRec, setOpenRec] = useState<number | null>(0);
+  const [viewMode, setViewMode] = useState<"brief" | "full">("brief");
+  const [role, setRole] = useState<(typeof ROLES)[number]["id"]>("all");
+  const [activeClaim, setActiveClaim] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
 
-  const activeStep = events.length ? events[events.length - 1].step : status;
   const busy = loading && status !== "completed" && status !== "failed";
+  const activeStep = events.length ? events[events.length - 1].step : status;
 
   useEffect(() => {
-    if (!jobId || status === "completed" || status === "failed") return;
+    const saved = window.localStorage.getItem("modus_viewer");
+    if (saved) {
+      setViewer(saved);
+      setViewerInput(saved);
+    }
+  }, []);
 
+  useEffect(() => {
+    void loadHistory(viewer);
+  }, [viewer]);
+
+  useEffect(() => {
+    if (!jobId || status === "completed" || status === "failed" || jobId === "demo-retail-bank") {
+      return;
+    }
     const source = new EventSource(`${API_URL}/research/${jobId}/events`);
-
     const handle = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data) as ProgressEvent;
@@ -102,39 +149,88 @@ export default function HomePage() {
           setLoading(false);
         }
       } catch {
-        /* ignore malformed chunks */
+        /* ignore */
       }
     };
-
-    [
-      "queued",
-      "planning",
-      "company",
-      "industry",
-      "news",
-      "competitors",
-      "opportunity",
-      "risk",
-      "summarizing",
-      "done",
-      "error",
-      "completed",
-      "failed",
-      "pdf_error",
-      "message",
-    ].forEach((name) => source.addEventListener(name, handle as EventListener));
-
+    Object.keys(STEP_LABELS).forEach((name) =>
+      source.addEventListener(name, handle as EventListener)
+    );
+    source.addEventListener("pdf_error", handle as EventListener);
+    source.addEventListener("message", handle as EventListener);
     return () => source.close();
   }, [jobId, status]);
+
+  async function loadHistory(name: string) {
+    try {
+      const res = await fetch(
+        `${API_URL}/research?limit=8&viewer=${encodeURIComponent(name || "guest")}`
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as HistoryItem[];
+      setHistory(data);
+    } catch {
+      /* ignore */
+    }
+  }
 
   async function fetchReport(id: string) {
     const res = await fetch(`${API_URL}/research/${id}`);
     if (!res.ok) throw new Error("Failed to load report");
     const data = await res.json();
     setReport(data.report);
-    setStatus(data.status);
+    setStatus(data.status || "completed");
     setLoading(false);
     setOpenRec(0);
+    setViewMode("brief");
+    void loadHistory(viewer);
+  }
+
+  async function signIn(e: FormEvent) {
+    e.preventDefault();
+    const name = viewerInput.trim() || "guest";
+    await fetch(`${API_URL}/session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).catch(() => null);
+    window.localStorage.setItem("modus_viewer", name);
+    setViewer(name);
+  }
+
+  async function loadDemo() {
+    setError(null);
+    setEvents([]);
+    setLoading(true);
+    setStatus("completed");
+    try {
+      const res = await fetch(`${API_URL}/demo`);
+      if (!res.ok) throw new Error("Failed to load demo brief");
+      const data = await res.json();
+      setJobId(data.id);
+      setQuery(data.query || SAMPLE_QUERIES[0]);
+      setReport(data.report);
+      setLoading(false);
+      setOpenRec(0);
+      setViewMode("brief");
+    } catch (err) {
+      setLoading(false);
+      setStatus("failed");
+      setError(err instanceof Error ? err.message : "Demo failed");
+    }
+  }
+
+  async function onUpload(file: File | null) {
+    if (!file) return;
+    const body = new FormData();
+    body.append("file", file);
+    const res = await fetch(`${API_URL}/upload`, { method: "POST", body });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      setError(detail.detail || "Upload failed");
+      return;
+    }
+    const data = await res.json();
+    setDocs((prev) => [...prev, data]);
   }
 
   async function onSubmit(e: FormEvent) {
@@ -145,12 +241,17 @@ export default function HomePage() {
     setLoading(true);
     setStatus("queued");
     setOpenRec(null);
-
     try {
       const res = await fetch(`${API_URL}/research`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: query.trim(), use_cache: false }),
+        body: JSON.stringify({
+          query: query.trim(),
+          use_cache: false,
+          document_ids: docs.map((d) => d.id),
+          what_if: whatIf.trim(),
+          viewer,
+        }),
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => ({}));
@@ -169,38 +270,121 @@ export default function HomePage() {
     }
   }
 
+  async function openHistory(id: string) {
+    setJobId(id);
+    setLoading(true);
+    await fetchReport(id);
+  }
+
+  const filteredRecs = useMemo(() => {
+    const recs = report?.recommendations || [];
+    if (role === "all") return recs;
+    return recs.filter((r) => (r.roles || []).includes(role));
+  }, [report, role]);
+
+  const sourceMap = useMemo(() => {
+    const map = new Map<string, Source>();
+    for (const s of report?.sources || []) {
+      if (s.id) map.set(s.id, s);
+    }
+    return map;
+  }, [report]);
+
   return (
-    <main className="page">
-      <header className="hero">
-        <p className="brand">Enterprise AI Research Agent</p>
-        <h1>Research a transformation question.</h1>
-        <p className="lede">
-          Specialist agents gather company context, industry signals, news,
-          competitors, and AI opportunities, then return a brief with sources
-          and clear recommendation rationales.
+    <main className="shell">
+      <aside className="rail">
+        <p className="eyebrow">Prototype</p>
+        <h1>Enterprise AI Research Agent</h1>
+        <p className="rail-copy">
+          Ask a transformation question. Specialist agents gather evidence,
+          check risk, and return a brief you can defend.
         </p>
 
-        <form className="search" onSubmit={onSubmit}>
-          <label htmlFor="query">Research query</label>
-          <div className="row">
+        <div className="walk">
+          <p>How it works</p>
+          <ol>
+            <li>Plan the research</li>
+            <li>Gather company, industry, news</li>
+            <li>Compare competitors and opportunities</li>
+            <li>Risk check, then synthesize</li>
+          </ol>
+        </div>
+
+        <form className="signin" onSubmit={signIn}>
+          <label htmlFor="viewer">Viewer</label>
+          <div className="inline">
             <input
-              id="query"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="e.g. AI opportunities for retail banking operations"
-              disabled={busy}
-              required
+              id="viewer"
+              value={viewerInput}
+              onChange={(e) => setViewerInput(e.target.value)}
+              placeholder="Your name"
             />
-            <button type="submit" disabled={busy}>
-              {busy ? "Researching…" : "Research"}
+            <button type="submit">Save</button>
+          </div>
+          <small>Saved as {viewer}. History stays with this viewer.</small>
+        </form>
+
+        <div className="history">
+          <div className="history-head">
+            <strong>History</strong>
+            <button type="button" className="text-btn" onClick={() => loadHistory(viewer)}>
+              Refresh
             </button>
           </div>
-          <div className="samples">
+          {history.length === 0 ? (
+            <p className="muted">No saved briefs yet.</p>
+          ) : (
+            <ul>
+              {history.map((item) => (
+                <li key={item.id}>
+                  <button type="button" onClick={() => openHistory(item.id)}>
+                    <span>{item.query}</span>
+                    <em>{item.status}</em>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="roadmap-box">
+          <strong>Roadmap</strong>
+          <p>Now: multi-agent brief, sources, risk, PDF</p>
+          <p>Next: workers, Postgres, system connectors</p>
+          <p>Later: live operating-model sync</p>
+        </div>
+      </aside>
+
+      <section className="stage">
+        <header className="hero-card">
+          <div>
+            <p className="brand-mark">Research a transformation question</p>
+            <p className="lede">
+              Instant sample brief available. Or run a live research job with
+              optional documents and a what-if scenario.
+            </p>
+          </div>
+          <button type="button" className="ghost" onClick={loadDemo} disabled={busy}>
+            Load sample brief
+          </button>
+        </header>
+
+        <form className="composer" onSubmit={onSubmit}>
+          <label htmlFor="query">Query</label>
+          <textarea
+            id="query"
+            rows={3}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            disabled={busy}
+            required
+          />
+          <div className="chips">
             {SAMPLE_QUERIES.map((sample) => (
               <button
                 key={sample}
                 type="button"
-                className="sample"
+                className="chip"
                 disabled={busy}
                 onClick={() => setQuery(sample)}
               >
@@ -208,170 +392,228 @@ export default function HomePage() {
               </button>
             ))}
           </div>
-        </form>
-      </header>
 
-      {(loading || events.length > 0) && (
-        <section className="panel progress" aria-live="polite">
-          <div className="panel-head">
-            <h2>Status</h2>
-            <span className={`pill ${status}`}>
-              {STEP_LABELS[activeStep] || activeStep}
-            </span>
-          </div>
-          <ol>
-            {events.map((ev, idx) => (
-              <li key={`${ev.step}-${idx}`}>
-                <span className="dot" />
-                <div>
-                  <strong>{STEP_LABELS[ev.step] || ev.step}</strong>
-                  <p>{ev.message}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          {busy && <div className="bar" />}
-        </section>
-      )}
-
-      {error && (
-        <section className="panel error">
-          <h2>Error</h2>
-          <p>{error}</p>
-        </section>
-      )}
-
-      {report && (
-        <section className="report">
-          <div className="report-head">
+          <div className="grid-2">
             <div>
-              <p className="eyebrow">Brief</p>
-              <h2>{report.subject || report.query || query}</h2>
+              <label htmlFor="whatif">What would change if…</label>
+              <input
+                id="whatif"
+                value={whatIf}
+                onChange={(e) => setWhatIf(e.target.value)}
+                placeholder="e.g. the bank freezes hiring for 12 months"
+                disabled={busy}
+              />
             </div>
-            {jobId && (
-              <a
-                className="download"
-                href={`${API_URL}/research/${jobId}/pdf`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Download PDF
-              </a>
-            )}
+            <div>
+              <label htmlFor="docs">Internal docs</label>
+              <input
+                id="docs"
+                type="file"
+                accept=".pdf,.txt,.md,.docx"
+                disabled={busy}
+                onChange={(e) => onUpload(e.target.files?.[0] || null)}
+              />
+              {docs.length > 0 && (
+                <ul className="doc-list">
+                  {docs.map((d) => (
+                    <li key={d.id}>
+                      {d.filename} · {d.chars} chars
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
 
-          <article className="block">
-            <h3>Executive summary</h3>
-            <p>{report.executive_summary || "—"}</p>
-          </article>
+          <button type="submit" className="primary" disabled={busy}>
+            {busy ? "Researching…" : "Run research"}
+          </button>
+        </form>
 
-          <article className="block">
-            <h3>Context</h3>
-            <p>{report.context?.company_or_subject_summary || "—"}</p>
-            {report.context?.industry ? (
-              <p>
-                <strong>Industry:</strong> {report.context.industry}
-              </p>
-            ) : null}
-            {report.context?.operating_notes ? (
-              <p>{report.context.operating_notes}</p>
-            ) : null}
-          </article>
-
-          <article className="block">
-            <h3>Industry signals</h3>
-            <BulletList title="Trends" items={report.industry_signals?.trends} />
-            <BulletList
-              title="AI adoption"
-              items={report.industry_signals?.ai_adoption_patterns}
-            />
-            <BulletList
-              title="Pressures"
-              items={report.industry_signals?.pressures}
-            />
-          </article>
-
-          <article className="block">
-            <h3>Recent news</h3>
-            <ul className="news">
-              {(report.recent_news || []).map((item, idx) => (
-                <li key={idx}>
-                  <strong>{String(item.headline || "Untitled")}</strong>
-                  <p>{String(item.summary || "")}</p>
-                  {item.url ? (
-                    <a href={String(item.url)} target="_blank" rel="noreferrer">
-                      Source
-                    </a>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </article>
-
-          <article className="block">
-            <h3>Competitors</h3>
-            <div className="grid">
-              {(report.competitors || []).map((c, idx) => (
-                <div key={idx} className="comp">
-                  <h4>{String(c.name || "Competitor")}</h4>
-                  <p>{String(c.why || "")}</p>
-                  <BulletList
-                    items={(c.ai_or_transformation_moves as string[]) || []}
-                  />
+        {(loading || events.length > 0) && !report?.demo && (
+          <div className="panel">
+            <div className="panel-head">
+              <h2>Agent timeline</h2>
+              <span className="pill">{STEP_LABELS[activeStep] || activeStep}</span>
+            </div>
+            <div className="timeline">
+              {events.map((ev, idx) => (
+                <div key={`${ev.step}-${idx}`} className="timeline-item">
+                  <span className="dot" />
+                  <div>
+                    <strong>{STEP_LABELS[ev.step] || ev.step}</strong>
+                    <p>{ev.message}</p>
+                  </div>
                 </div>
               ))}
             </div>
-          </article>
+          </div>
+        )}
 
-          <article className="block">
-            <h3>AI opportunities</h3>
-            <div className="grid">
-              {(report.ai_opportunities || []).map((opp, idx) => (
-                <div key={idx} className="comp">
-                  <h4>{String(opp.title || "Opportunity")}</h4>
-                  <p>
-                    <strong>{String(opp.process_or_function || "")}</strong>
-                    {opp.complexity ? ` · ${String(opp.complexity)} complexity` : ""}
-                  </p>
-                  <p>{String(opp.why_now || "")}</p>
-                  <p>{String(opp.expected_impact || "")}</p>
+        {error && (
+          <div className="panel error">
+            <h2>Something failed</h2>
+            <p>{error}</p>
+          </div>
+        )}
+
+        {report && (
+          <div className="report">
+            <div className="report-top">
+              <div>
+                <p className="eyebrow">{report.demo ? "Sample brief" : "Brief"}</p>
+                <h2>{report.subject || report.query}</h2>
+              </div>
+              <div className="report-actions">
+                <div className="seg">
+                  <button
+                    type="button"
+                    className={viewMode === "brief" ? "on" : ""}
+                    onClick={() => setViewMode("brief")}
+                  >
+                    1-page
+                  </button>
+                  <button
+                    type="button"
+                    className={viewMode === "full" ? "on" : ""}
+                    onClick={() => setViewMode("full")}
+                  >
+                    Full
+                  </button>
                 </div>
-              ))}
+                {jobId && (
+                  <a
+                    className="primary linkish"
+                    href={`${API_URL}/research/${jobId}/pdf`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    PDF
+                  </a>
+                )}
+              </div>
             </div>
-          </article>
 
-          <article className="block">
-            <h3>Risks</h3>
-            <ul className="news">
-              {(report.risks || []).map((risk, idx) =>
-                typeof risk === "string" ? (
-                  <li key={idx}>{risk}</li>
-                ) : (
-                  <li key={idx}>
-                    <strong>
-                      {String(risk.title || "Risk")}
-                      {risk.severity ? ` · ${String(risk.severity)}` : ""}
-                    </strong>
-                    <p>{String(risk.detail || "")}</p>
-                    {risk.mitigation ? (
-                      <p>
-                        <em>Mitigation:</em> {String(risk.mitigation)}
-                      </p>
-                    ) : null}
-                  </li>
-                )
+            <div className="metrics">
+              <Metric
+                label="Confidence"
+                value={`${report.overall_confidence || "medium"} · ${Math.round(
+                  (report.confidence_score || 0.6) * 100
+                )}%`}
+              />
+              <Metric label="Sources" value={String(report.eval?.sources_count ?? report.sources?.length ?? 0)} />
+              <Metric label="Claims linked" value={String(report.eval?.claims_linked ?? 0)} />
+              <Metric
+                label="Competitors"
+                value={String(report.eval?.named_competitors ?? report.competitors?.length ?? 0)}
+              />
+            </div>
+
+            {viewMode === "brief" ? (
+              <div className="one-pager">
+                <h3>{report.one_pager?.headline || "Executive brief"}</h3>
+                <p>{report.executive_summary}</p>
+                <div className="two-col">
+                  <div>
+                    <h4>Three moves</h4>
+                    <ul>
+                      {(report.one_pager?.three_moves || []).map((item, idx) => (
+                        <li key={idx}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4>Watchouts</h4>
+                    <ul>
+                      {(report.one_pager?.watchouts || []).map((item, idx) => (
+                        <li key={idx}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Block title="Executive summary">
+                  <p>{report.executive_summary}</p>
+                </Block>
+                <Block title="Context">
+                  <p>{report.context?.company_or_subject_summary}</p>
+                  {report.context?.industry && (
+                    <p>
+                      <strong>Industry:</strong> {report.context.industry}
+                    </p>
+                  )}
+                  <p>{report.context?.operating_notes}</p>
+                </Block>
+              </>
+            )}
+
+            {(report.what_if_assessment || report.what_if) && (
+              <Block title="What-if assessment">
+                <p>{report.what_if_assessment || `Scenario: ${report.what_if}`}</p>
+              </Block>
+            )}
+
+            <Block title="Evidence claims">
+              <div className="claims">
+                {(report.claims || []).map((claim) => (
+                  <button
+                    key={claim.id}
+                    type="button"
+                    className={`claim ${activeClaim === claim.id ? "on" : ""}`}
+                    onClick={() =>
+                      setActiveClaim(activeClaim === claim.id ? null : claim.id || null)
+                    }
+                  >
+                    <span>{claim.text}</span>
+                    <em>
+                      {(claim.source_ids || [])
+                        .map((id) => sourceMap.get(id)?.title || id)
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .join(" · ") || "source"}
+                    </em>
+                  </button>
+                ))}
+              </div>
+              {activeClaim && (
+                <div className="claim-sources">
+                  {(report.claims?.find((c) => c.id === activeClaim)?.source_ids || []).map(
+                    (id) => {
+                      const src = sourceMap.get(id);
+                      if (!src) return null;
+                      return src.url ? (
+                        <a key={id} href={src.url} target="_blank" rel="noreferrer">
+                          {src.title || src.url}
+                        </a>
+                      ) : (
+                        <span key={id}>{src.title}</span>
+                      );
+                    }
+                  )}
+                </div>
               )}
-            </ul>
-          </article>
+            </Block>
 
-          <article className="block">
-            <h3>Recommendations</h3>
-            <p className="hint">
-              Expand a recommendation for rationale, supporting findings, and
-              source links.
-            </p>
+            <div className="role-bar">
+              <span>Recommendations for</span>
+              <div className="seg">
+                {ROLES.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={role === r.id ? "on" : ""}
+                    onClick={() => setRole(r.id)}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="recs">
-              {(report.recommendations || []).map((rec, idx) => {
+              {filteredRecs.map((rec, idx) => {
                 const open = openRec === idx;
                 return (
                   <div key={idx} className={`rec ${open ? "open" : ""}`}>
@@ -381,343 +623,488 @@ export default function HomePage() {
                       onClick={() => setOpenRec(open ? null : idx)}
                     >
                       <span>
-                        <strong>{rec.title || "Recommendation"}</strong>
+                        <strong>{rec.title}</strong>
                         <em>
-                          {rec.priority || "medium"} priority ·{" "}
-                          {rec.confidence || "medium"} confidence
+                          {rec.priority} priority · {rec.confidence} confidence
                         </em>
                       </span>
-                      <span className="chev">{open ? "−" : "+"}</span>
+                      <span>{open ? "−" : "+"}</span>
                     </button>
                     {open && (
                       <div className="rec-body">
                         <p>
-                          <strong>Why:</strong> {rec.rationale || "—"}
+                          <strong>Why:</strong> {rec.rationale}
                         </p>
-                        <BulletList
-                          title="Supporting findings"
-                          items={rec.supporting_findings}
-                        />
-                        <ul className="sources">
-                          {(rec.sources || []).map((s, sidx) => (
-                            <li key={sidx}>
-                              {s.url ? (
-                                <a href={s.url} target="_blank" rel="noreferrer">
-                                  {s.title || s.url}
-                                </a>
-                              ) : (
-                                s.title
-                              )}
-                            </li>
+                        <ul>
+                          {(rec.supporting_findings || []).map((f, i) => (
+                            <li key={i}>{f}</li>
                           ))}
                         </ul>
+                        <div className="source-row">
+                          {(rec.sources || []).map((s, i) =>
+                            s.url ? (
+                              <a key={i} href={s.url} target="_blank" rel="noreferrer">
+                                {s.title || s.url}
+                              </a>
+                            ) : (
+                              <span key={i}>{s.title}</span>
+                            )
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
                 );
               })}
             </div>
-          </article>
 
-          {(report.confidence_notes?.length || report.conflicts?.length) ? (
-            <article className="block">
-              <h3>Confidence & conflicts</h3>
-              <BulletList items={report.confidence_notes} />
-              <BulletList items={report.conflicts} />
-            </article>
-          ) : null}
+            {viewMode === "full" && (
+              <>
+                <Block title="Industry signals">
+                  <List items={report.industry_signals?.trends} />
+                  <List items={report.industry_signals?.pressures} />
+                </Block>
+                <Block title="Named competitors">
+                  <div className="cards">
+                    {(report.competitors || []).map((c, idx) => (
+                      <div key={idx} className="mini">
+                        <h4>{String(c.name || "")}</h4>
+                        <p>{String(c.why || "")}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Block>
+                <Block title="Opportunities">
+                  <div className="cards">
+                    {(report.ai_opportunities || []).map((o, idx) => (
+                      <div key={idx} className="mini">
+                        <h4>{String(o.title || "")}</h4>
+                        <p>{String(o.expected_impact || o.why_now || "")}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Block>
+                <Block title="Risks">
+                  <ul className="risk-list">
+                    {(report.risks || []).map((risk, idx) =>
+                      typeof risk === "string" ? (
+                        <li key={idx}>{risk}</li>
+                      ) : (
+                        <li key={idx}>
+                          <strong>
+                            {String(risk.title || "")} · {String(risk.severity || "")}
+                          </strong>
+                          <p>{String(risk.detail || "")}</p>
+                          {risk.mitigation ? (
+                            <p>
+                              <em>Mitigation:</em> {String(risk.mitigation)}
+                            </p>
+                          ) : null}
+                        </li>
+                      )
+                    )}
+                  </ul>
+                </Block>
+              </>
+            )}
 
-          <article className="block">
-            <h3>Sources</h3>
-            <ul className="sources">
-              {(report.sources || []).map((s, idx) => (
-                <li key={idx}>
-                  {s.url ? (
-                    <a href={s.url} target="_blank" rel="noreferrer">
-                      {s.title || s.url}
-                    </a>
-                  ) : (
-                    s.title
-                  )}
-                </li>
-              ))}
-            </ul>
-          </article>
-        </section>
-      )}
+            <Block title="Agent contributions">
+              <div className="contrib">
+                {(report.agent_contributions || []).map((a, idx) => (
+                  <div key={idx}>
+                    <strong>{a.agent}</strong>
+                    <p>{a.summary}</p>
+                  </div>
+                ))}
+              </div>
+            </Block>
+
+            <Block title="Top sources">
+              <ol className="sources">
+                {(report.sources || []).slice(0, 12).map((s, idx) => (
+                  <li key={idx}>
+                    {s.url ? (
+                      <a href={s.url} target="_blank" rel="noreferrer">
+                        {s.title || s.url}
+                      </a>
+                    ) : (
+                      s.title
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </Block>
+
+            {report.roadmap && (
+              <Block title="Product roadmap">
+                <div className="three-col">
+                  <div>
+                    <h4>Now</h4>
+                    <List items={report.roadmap.now} />
+                  </div>
+                  <div>
+                    <h4>Next</h4>
+                    <List items={report.roadmap.next} />
+                  </div>
+                  <div>
+                    <h4>Later</h4>
+                    <List items={report.roadmap.later} />
+                  </div>
+                </div>
+              </Block>
+            )}
+          </div>
+        )}
+      </section>
 
       <style jsx>{`
-        .page {
+        .shell {
           position: relative;
           z-index: 1;
-          max-width: 920px;
+          display: grid;
+          grid-template-columns: minmax(260px, 320px) 1fr;
+          gap: 1.25rem;
+          max-width: 1200px;
           margin: 0 auto;
-          padding: 2.5rem 1.25rem 4rem;
-        }
-
-        .hero {
-          animation: riseIn 0.7s ease both;
-          padding: 1.5rem 0 2rem;
-        }
-
-        .brand {
-          margin: 0 0 0.75rem;
-          font-family: var(--font-display);
-          font-size: clamp(1.8rem, 4.5vw, 2.7rem);
-          font-weight: 700;
-          letter-spacing: -0.03em;
-          color: var(--ink);
-          line-height: 1.05;
-        }
-
-        h1 {
-          margin: 0;
-          max-width: 18ch;
-          font-family: var(--font-display);
-          font-size: clamp(1.35rem, 3vw, 2rem);
-          font-weight: 500;
-          line-height: 1.2;
-          color: var(--ink-soft);
-        }
-
-        .lede {
-          margin: 1rem 0 0;
-          max-width: 58ch;
-          color: var(--ink-soft);
-          font-size: 1.05rem;
-          line-height: 1.55;
-        }
-
-        .search {
-          margin-top: 1.75rem;
-        }
-
-        .search label {
-          display: block;
-          margin-bottom: 0.4rem;
-          font-size: 0.85rem;
-          font-weight: 600;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          color: var(--ink-soft);
-        }
-
-        .row {
-          display: flex;
-          gap: 0.65rem;
-          flex-wrap: wrap;
-        }
-
-        input {
-          flex: 1;
-          min-width: 220px;
-          border: 1px solid var(--line);
-          background: rgba(255, 255, 255, 0.72);
-          border-radius: 10px;
-          padding: 0.9rem 1rem;
-          outline: none;
-        }
-
-        input:focus {
-          border-color: var(--accent);
-          box-shadow: 0 0 0 3px rgba(15, 76, 92, 0.15);
-        }
-
-        button,
-        .download {
-          border: none;
-          border-radius: 10px;
-          background: var(--accent);
-          color: #f7fffc;
-          font-weight: 700;
-          padding: 0.9rem 1.25rem;
-          cursor: pointer;
-          text-decoration: none;
-          display: inline-flex;
-          align-items: center;
-        }
-
-        button:disabled {
-          opacity: 0.7;
-          cursor: wait;
-        }
-
-        .samples {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 0.5rem;
-          margin-top: 0.85rem;
-        }
-
-        .sample {
-          background: transparent;
-          color: var(--ink-soft);
-          border: 1px solid var(--line);
-          font-weight: 600;
-          font-size: 0.82rem;
-          padding: 0.45rem 0.7rem;
-          text-align: left;
-        }
-
-        .panel,
-        .report {
-          margin-top: 1.25rem;
+          padding: 1.5rem;
           animation: riseIn 0.55s ease both;
         }
 
-        .panel {
+        .rail,
+        .hero-card,
+        .composer,
+        .panel,
+        .report,
+        .block,
+        .one-pager {
+          background: rgba(255, 250, 242, 0.88);
           border: 1px solid var(--line);
-          background: var(--paper);
-          border-radius: 16px;
-          padding: 1.1rem 1.2rem;
           box-shadow: var(--shadow);
         }
 
-        .panel-head,
-        .report-head {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 1rem;
+        .rail {
+          border-radius: 22px;
+          padding: 1.25rem;
+          position: sticky;
+          top: 1rem;
+          align-self: start;
+          max-height: calc(100vh - 2rem);
+          overflow: auto;
         }
 
-        .panel h2,
-        .report-head h2,
-        .block h3 {
-          margin: 0;
+        .rail h1,
+        .report h2,
+        .brand-mark,
+        .one-pager h3,
+        .block h3,
+        .mini h4 {
           font-family: var(--font-display);
-          font-weight: 700;
+          letter-spacing: -0.03em;
+        }
+
+        .rail h1 {
+          margin: 0.2rem 0 0.7rem;
+          font-size: 1.7rem;
+          line-height: 1.1;
+        }
+
+        .rail-copy,
+        .lede,
+        .muted,
+        small,
+        .timeline p,
+        .rec-body p,
+        .mini p {
+          color: var(--ink-soft);
+          line-height: 1.5;
         }
 
         .eyebrow {
-          margin: 0 0 0.25rem;
+          margin: 0;
           text-transform: uppercase;
-          letter-spacing: 0.06em;
-          font-size: 0.75rem;
-          color: var(--ink-soft);
+          letter-spacing: 0.08em;
+          font-size: 0.72rem;
           font-weight: 700;
+          color: var(--accent-2);
+        }
+
+        .walk,
+        .roadmap-box,
+        .history,
+        .signin {
+          margin-top: 1.1rem;
+          padding-top: 1rem;
+          border-top: 1px solid var(--line);
+        }
+
+        .walk ol,
+        .history ul,
+        .doc-list,
+        .sources,
+        .risk-list,
+        .rec-body ul {
+          margin: 0.4rem 0 0;
+          padding-left: 1.1rem;
+          color: var(--ink-soft);
+        }
+
+        .inline,
+        .report-actions,
+        .role-bar,
+        .metrics,
+        .grid-2,
+        .two-col,
+        .three-col,
+        .cards,
+        .contrib,
+        .source-row,
+        .claim-sources {
+          display: flex;
+          gap: 0.65rem;
+        }
+
+        .inline {
+          margin-top: 0.35rem;
+        }
+
+        .grid-2,
+        .two-col,
+        .three-col,
+        .cards,
+        .contrib,
+        .metrics {
+          display: grid;
+        }
+
+        .grid-2,
+        .two-col {
+          grid-template-columns: 1fr 1fr;
+          gap: 0.85rem;
+        }
+
+        .three-col,
+        .metrics {
+          grid-template-columns: repeat(3, 1fr);
+        }
+
+        .metrics {
+          grid-template-columns: repeat(4, 1fr);
+          margin: 1rem 0;
+        }
+
+        .cards,
+        .contrib {
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        }
+
+        input,
+        textarea {
+          width: 100%;
+          border: 1px solid var(--line);
+          background: #fff;
+          border-radius: 12px;
+          padding: 0.8rem 0.9rem;
+        }
+
+        button,
+        .linkish {
+          border: none;
+          border-radius: 999px;
+          cursor: pointer;
+        }
+
+        .primary,
+        .linkish {
+          background: var(--accent);
+          color: #f6fff9;
+          font-weight: 700;
+          padding: 0.8rem 1.15rem;
+          text-decoration: none;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .ghost,
+        .chip,
+        .text-btn,
+        .seg button,
+        .rec-head,
+        .claim {
+          background: transparent;
+          color: var(--ink);
+        }
+
+        .ghost,
+        .chip {
+          border: 1px solid var(--line);
+          border-radius: 999px;
+          padding: 0.55rem 0.9rem;
+        }
+
+        .text-btn {
+          border: none;
+          color: var(--accent);
+          padding: 0;
+          font-weight: 600;
+        }
+
+        .stage {
+          display: grid;
+          gap: 1rem;
+        }
+
+        .hero-card,
+        .composer,
+        .panel,
+        .report {
+          border-radius: 22px;
+          padding: 1.2rem 1.25rem;
+        }
+
+        .hero-card {
+          display: flex;
+          justify-content: space-between;
+          gap: 1rem;
+          align-items: start;
+        }
+
+        .brand-mark {
+          margin: 0;
+          font-size: clamp(1.5rem, 3vw, 2.1rem);
+          line-height: 1.15;
+        }
+
+        .chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.45rem;
+          margin: 0.7rem 0 1rem;
+        }
+
+        .chip {
+          text-align: left;
+          font-size: 0.82rem;
+          max-width: 100%;
+        }
+
+        label {
+          display: block;
+          margin: 0.7rem 0 0.35rem;
+          font-size: 0.8rem;
+          font-weight: 700;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: var(--ink-soft);
+        }
+
+        .panel-head,
+        .report-top,
+        .history-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 1rem;
+          align-items: center;
         }
 
         .pill {
-          font-size: 0.78rem;
+          background: var(--accent-soft);
+          color: var(--accent);
+          border-radius: 999px;
+          padding: 0.3rem 0.7rem;
+          font-size: 0.75rem;
           font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.04em;
-          padding: 0.35rem 0.65rem;
-          border-radius: 999px;
-          background: rgba(15, 76, 92, 0.12);
-          color: var(--accent);
         }
 
-        .pill.failed,
-        .pill.error {
-          background: rgba(159, 18, 57, 0.12);
-          color: var(--danger);
-        }
-
-        .progress ol {
-          list-style: none;
-          margin: 1rem 0 0;
-          padding: 0;
+        .timeline {
           display: grid;
           gap: 0.75rem;
+          margin-top: 0.9rem;
         }
 
-        .progress li {
+        .timeline-item {
           display: grid;
-          grid-template-columns: 14px 1fr;
-          gap: 0.75rem;
+          grid-template-columns: 12px 1fr;
+          gap: 0.7rem;
         }
 
         .dot {
           width: 10px;
           height: 10px;
-          margin-top: 0.35rem;
+          margin-top: 0.4rem;
           border-radius: 50%;
           background: var(--accent);
           animation: pulseDot 1.4s ease infinite;
         }
 
-        .progress p {
-          margin: 0.15rem 0 0;
-          color: var(--ink-soft);
-        }
-
-        .bar {
-          margin-top: 1rem;
-          height: 4px;
-          border-radius: 999px;
-          background: linear-gradient(
-            90deg,
-            transparent,
-            var(--accent),
-            transparent
-          );
-          background-size: 200% 100%;
-          animation: pulseDot 1.2s linear infinite;
-        }
-
-        .error {
-          border-color: rgba(159, 18, 57, 0.25);
-        }
-
-        .block {
-          margin-top: 1rem;
+        .metric {
+          background: var(--paper-2);
           border: 1px solid var(--line);
-          background: rgba(255, 255, 255, 0.62);
           border-radius: 16px;
-          padding: 1.15rem 1.2rem;
+          padding: 0.8rem;
         }
 
-        .block p,
-        .block li {
+        .metric span {
+          display: block;
+          font-size: 0.75rem;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
           color: var(--ink-soft);
-          line-height: 1.55;
         }
 
-        .hint {
-          margin-top: 0.4rem;
-          font-size: 0.95rem;
+        .metric strong {
+          display: block;
+          margin-top: 0.25rem;
+          font-size: 1rem;
         }
 
-        .news,
-        .sources {
-          list-style: none;
-          padding: 0;
-          margin: 0.75rem 0 0;
-          display: grid;
-          gap: 0.85rem;
-        }
-
-        .grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-          gap: 0.85rem;
+        .one-pager,
+        .block {
+          border-radius: 18px;
+          padding: 1rem 1.05rem;
           margin-top: 0.85rem;
-        }
-
-        .comp {
           border: 1px solid var(--line);
-          border-radius: 12px;
-          padding: 0.85rem;
           background: rgba(255, 255, 255, 0.55);
+          box-shadow: none;
         }
 
-        .comp h4 {
-          margin: 0 0 0.35rem;
-          font-family: var(--font-display);
+        .seg {
+          display: inline-flex;
+          padding: 0.2rem;
+          border-radius: 999px;
+          border: 1px solid var(--line);
+          background: #fff;
+        }
+
+        .seg button {
+          border-radius: 999px;
+          padding: 0.4rem 0.75rem;
+          font-weight: 600;
+        }
+
+        .seg button.on,
+        .claim.on {
+          background: var(--accent);
+          color: #f4fff8;
+        }
+
+        .role-bar {
+          align-items: center;
+          justify-content: space-between;
+          margin: 1rem 0 0.6rem;
+          color: var(--ink-soft);
         }
 
         .recs {
           display: grid;
-          gap: 0.65rem;
-          margin-top: 0.85rem;
+          gap: 0.55rem;
         }
 
         .rec {
           border: 1px solid var(--line);
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.55);
+          border-radius: 14px;
+          background: #fff;
           overflow: hidden;
         }
 
@@ -726,51 +1113,140 @@ export default function HomePage() {
           display: flex;
           justify-content: space-between;
           gap: 1rem;
-          background: transparent;
-          color: var(--ink);
           text-align: left;
-          padding: 0.9rem 1rem;
-          border-radius: 0;
+          padding: 0.85rem 1rem;
         }
 
-        .rec-head em {
+        .rec-head em,
+        .claim em {
           display: block;
           margin-top: 0.2rem;
-          font-style: normal;
           color: var(--ink-soft);
+          font-style: normal;
           font-size: 0.85rem;
-        }
-
-        .chev {
-          font-size: 1.2rem;
-          color: var(--accent);
         }
 
         .rec-body {
           padding: 0 1rem 1rem;
           border-top: 1px solid var(--line);
         }
+
+        .claims {
+          display: grid;
+          gap: 0.5rem;
+        }
+
+        .claim {
+          text-align: left;
+          border: 1px solid var(--line);
+          border-radius: 12px;
+          padding: 0.8rem 0.9rem;
+          background: #fff;
+        }
+
+        .claim-sources,
+        .source-row {
+          flex-wrap: wrap;
+          margin-top: 0.7rem;
+        }
+
+        .mini {
+          border: 1px solid var(--line);
+          border-radius: 12px;
+          padding: 0.8rem;
+          background: #fff;
+        }
+
+        .history button {
+          width: 100%;
+          text-align: left;
+          border: 1px solid var(--line);
+          border-radius: 12px;
+          background: #fff;
+          padding: 0.65rem 0.75rem;
+          margin-top: 0.4rem;
+        }
+
+        .history em {
+          display: block;
+          color: var(--ink-soft);
+          font-style: normal;
+          font-size: 0.78rem;
+        }
+
+        .error {
+          border-color: rgba(143, 45, 45, 0.3);
+        }
+
+        @media (max-width: 920px) {
+          .shell {
+            grid-template-columns: 1fr;
+          }
+
+          .rail {
+            position: static;
+            max-height: none;
+          }
+
+          .hero-card,
+          .report-top,
+          .role-bar {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .grid-2,
+          .two-col,
+          .three-col,
+          .metrics {
+            grid-template-columns: 1fr 1fr;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .grid-2,
+          .two-col,
+          .three-col,
+          .metrics {
+            grid-template-columns: 1fr;
+          }
+        }
       `}</style>
     </main>
   );
 }
 
-function BulletList({
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function Block({
   title,
-  items,
+  children,
 }: {
-  title?: string;
-  items?: string[] | null;
+  title: string;
+  children: ReactNode;
 }) {
+  return (
+    <section className="block">
+      <h3>{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function List({ items }: { items?: string[] }) {
   if (!items || items.length === 0) return null;
   return (
-    <div>
-      {title ? <h4 style={{ marginBottom: "0.35rem" }}>{title}</h4> : null}
-      <ul>
-        {items.map((item, idx) => (
-          <li key={idx}>{item}</li>
-        ))}
-      </ul>
-    </div>
+    <ul>
+      {items.map((item, idx) => (
+        <li key={idx}>{item}</li>
+      ))}
+    </ul>
   );
 }

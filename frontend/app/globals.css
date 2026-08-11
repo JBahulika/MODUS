@@ -1,15 +1,19 @@
 :root {
-  --bg: #eef3f1;
-  --ink: #102a43;
-  --ink-soft: #486581;
-  --line: rgba(16, 42, 67, 0.12);
-  --accent: #0f4c5c;
-  --accent-bright: #146c80;
-  --danger: #9f1239;
-  --paper: rgba(255, 255, 255, 0.7);
-  --shadow: 0 18px 40px rgba(16, 42, 67, 0.08);
+  --bg: #f3efe6;
+  --bg-deep: #e7e0d2;
+  --ink: #1c1914;
+  --ink-soft: #5c564c;
+  --line: rgba(28, 25, 20, 0.12);
+  --paper: #fffaf2;
+  --paper-2: #f7f1e6;
+  --accent: #1f4d3a;
+  --accent-2: #9a4c1d;
+  --accent-soft: rgba(31, 77, 58, 0.1);
+  --warn: #8a5a12;
+  --danger: #8f2d2d;
+  --shadow: 0 20px 50px rgba(28, 25, 20, 0.08);
   --font-display: "Fraunces", Georgia, serif;
-  --font-body: "Source Sans 3", "Segoe UI", sans-serif;
+  --font-body: "IBM Plex Sans", "Source Sans 3", sans-serif;
 }
 
 * {
@@ -19,14 +23,13 @@
 html,
 body {
   margin: 0;
-  padding: 0;
   min-height: 100%;
-  font-family: var(--font-body);
   color: var(--ink);
+  font-family: var(--font-body);
   background:
-    radial-gradient(circle at 12% 10%, rgba(20, 108, 128, 0.16), transparent 36%),
-    radial-gradient(circle at 88% 0%, rgba(15, 76, 92, 0.12), transparent 32%),
-    linear-gradient(160deg, #f7faf8 0%, var(--bg) 48%, #e7eee9 100%);
+    radial-gradient(circle at 0% 0%, rgba(154, 76, 29, 0.12), transparent 28%),
+    radial-gradient(circle at 100% 10%, rgba(31, 77, 58, 0.12), transparent 30%),
+    linear-gradient(180deg, #f7f3ea 0%, var(--bg) 45%, var(--bg-deep) 100%);
 }
 
 body::before {
@@ -34,23 +37,25 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background-image: linear-gradient(
-      rgba(16, 42, 67, 0.03) 1px,
-      transparent 1px
-    ),
-    linear-gradient(90deg, rgba(16, 42, 67, 0.03) 1px, transparent 1px);
-  background-size: 28px 28px;
-  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.45), transparent 75%);
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.45'/%3E%3C/svg%3E");
 }
 
 a {
   color: var(--accent);
 }
 
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
 @keyframes riseIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
@@ -62,10 +67,37 @@ a {
   0%,
   100% {
     transform: scale(1);
-    opacity: 0.7;
+    opacity: 0.65;
   }
   50% {
-    transform: scale(1.25);
+    transform: scale(1.2);
     opacity: 1;
   }
+}
+
+.metric {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 0.8rem;
+}
+
+.metric span {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+.metric strong {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 1rem;
+}
+
+.block h3 {
+  margin: 0 0 0.55rem;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
 }

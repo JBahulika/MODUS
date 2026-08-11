@@ -28,10 +28,15 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 report_json TEXT,
-                error TEXT
+                error TEXT,
+                viewer TEXT
             )
             """
         )
+        # Lightweight migration for older DBs
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+        if "viewer" not in cols:
+            conn.execute("ALTER TABLE jobs ADD COLUMN viewer TEXT")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS job_events (
@@ -47,12 +52,12 @@ def init_db() -> None:
         conn.commit()
 
 
-def create_job(job_id: str, query: str) -> None:
+def create_job(job_id: str, query: str, viewer: str | None = None) -> None:
     now = _now()
     with _connect() as conn:
         conn.execute(
-            "INSERT INTO jobs (id, query, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-            (job_id, query, "queued", now, now),
+            "INSERT INTO jobs (id, query, status, created_at, updated_at, viewer) VALUES (?, ?, ?, ?, ?, ?)",
+            (job_id, query, "queued", now, now, viewer or "guest"),
         )
         conn.commit()
 
@@ -102,6 +107,7 @@ def get_job(job_id: str) -> dict[str, Any] | None:
             "updated_at": row["updated_at"],
             "report": report,
             "error": row["error"],
+            "viewer": row["viewer"] if "viewer" in row.keys() else "guest",
         }
 
 
@@ -127,17 +133,29 @@ def get_events(job_id: str, after_id: int = 0) -> list[dict[str, Any]]:
         ]
 
 
-def list_jobs(limit: int = 20) -> list[dict[str, Any]]:
+def list_jobs(limit: int = 20, viewer: str | None = None) -> list[dict[str, Any]]:
     with _connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, query, status, created_at, updated_at
-            FROM jobs
-            ORDER BY created_at DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
+        if viewer:
+            rows = conn.execute(
+                """
+                SELECT id, query, status, created_at, updated_at, viewer
+                FROM jobs
+                WHERE viewer = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (viewer, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, query, status, created_at, updated_at, viewer
+                FROM jobs
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
         return [dict(r) for r in rows]
 
 

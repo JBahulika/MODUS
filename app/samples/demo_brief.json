@@ -1,0 +1,279 @@
+{
+  "query": "AI transformation opportunities for a mid-size retail bank in operations",
+  "subject": "Mid-size retail bank operations",
+  "overall_confidence": "high",
+  "confidence_score": 0.82,
+  "executive_summary": "Mid-size retail banks can cut ops cost and cycle time by automating document-heavy back-office work first: loan origination, KYC/AML, payments exceptions, and dispute handling. Public benchmarks point to material efficiency gains when AI is applied to straight-through processing, while governance, data quality, and legacy integration remain the binding constraints. The highest-confidence path is a governed automation program paired with data cleanup and selective vendor partnerships—not a broad generative-AI rollout across every channel.",
+  "one_pager": {
+    "headline": "Automate the back office before you reinvent the front office",
+    "three_moves": [
+      "Stand up AI governance and model risk controls before scaling high-impact use cases",
+      "Pilot loan ops, KYC/AML, and payments exceptions where ROI is measurable",
+      "Modernize data access around legacy cores with APIs and modular vendors"
+    ],
+    "watchouts": [
+      "Bias and explainability in credit-adjacent workflows",
+      "Vendor concentration risk from third-party AI tools",
+      "Prompt-injection and data leakage on generative assistants"
+    ]
+  },
+  "context": {
+    "industry": "Retail banking",
+    "company_or_subject_summary": "Mid-size retail bank operations cover lending admin, payments, onboarding, fraud, and regulatory reporting. AI value concentrates in exception-heavy workflows where staff still move documents and reconcile cases by hand.",
+    "operating_notes": "Success depends on clean process definitions, reliable data across core systems, and cross-functional ownership across ops, risk, compliance, and technology."
+  },
+  "industry_signals": {
+    "trends": [
+      "Ops automation is shifting from cost-cutting to trust, auditability, and customer wait-time reduction",
+      "Specialized financial-services AI agents are rising faster than generic chatbots",
+      "Efficiency ratio is becoming a proxy for AI operating maturity"
+    ],
+    "ai_adoption_patterns": [
+      "Virtual assistants for routine service, with humans on exceptions",
+      "Back-office document extraction and reconciliation",
+      "Payments enrichment and fraud monitoring"
+    ],
+    "pressures": [
+      "Tightening AI governance and model-risk expectations",
+      "Legacy cores that block clean data access",
+      "Talent and budget constraints versus larger banks"
+    ]
+  },
+  "recent_news": [
+    {
+      "headline": "Regional and mid-sized banks are deploying AI for automation and analytics",
+      "summary": "Industry surveys show most finance leaders are already using or planning AI for operations automation.",
+      "url": "https://www.pymnts.com/",
+      "date": "2024",
+      "source_id": "s1"
+    },
+    {
+      "headline": "Generative AI is being tested for productivity lifts in banking workflows",
+      "summary": "Banks are piloting gen-AI for onboarding support, ops drafting, and analyst assistance rather than full autonomy.",
+      "url": "https://www.mckinsey.com/",
+      "date": "2024",
+      "source_id": "s2"
+    },
+    {
+      "headline": "Modular banking helps mid-size institutions adopt AI without core replacement",
+      "summary": "API-led and modular approaches let banks attach AI services around legacy systems.",
+      "url": "https://www.deloitte.com/",
+      "date": "2025",
+      "source_id": "s3"
+    }
+  ],
+  "competitors": [
+    {
+      "name": "JPMorgan Chase",
+      "why": "Sets the high bar for document intelligence and large-scale ops automation.",
+      "ai_or_transformation_moves": [
+        "Contract intelligence for commercial credit documents",
+        "Broad internal AI tooling across operations and risk"
+      ]
+    },
+    {
+      "name": "Bank of America",
+      "why": "Shows mature virtual-assistant scale and customer-ops automation.",
+      "ai_or_transformation_moves": [
+        "Erica virtual assistant for high-volume service deflection",
+        "Continued investment in AI-assisted operations"
+      ]
+    },
+    {
+      "name": "Wells Fargo",
+      "why": "Relevant peer path for mid-to-large retail ops modernization under heavy regulatory scrutiny.",
+      "ai_or_transformation_moves": [
+        "AI support in customer service and ops workflows",
+        "Emphasis on controls alongside automation"
+      ]
+    },
+    {
+      "name": "Capital One",
+      "why": "Strong reference for data-centric banking and decision automation.",
+      "ai_or_transformation_moves": [
+        "Heavy use of ML in credit and fraud decisions",
+        "Product and ops experimentation culture around data platforms"
+      ]
+    }
+  ],
+  "ai_opportunities": [
+    {
+      "title": "Automated loan origination document processing",
+      "process_or_function": "Loan administration",
+      "why_now": "Document intake and underwriting support still create long cycle times.",
+      "expected_impact": "Faster decisions, fewer manual touches, clearer audit trail",
+      "complexity": "medium",
+      "source_ids": ["s1", "s4"]
+    },
+    {
+      "title": "KYC/AML onboarding automation",
+      "process_or_function": "Onboarding & compliance",
+      "why_now": "Regulatory load and customer wait times collide in mid-size banks.",
+      "expected_impact": "Lower onboarding cost and faster account opening with stronger checks",
+      "complexity": "medium",
+      "source_ids": ["s1", "s5"]
+    },
+    {
+      "title": "Payments exception and reconciliation AI",
+      "process_or_function": "Payments operations",
+      "why_now": "Exceptions and repairs still consume skilled ops capacity.",
+      "expected_impact": "Higher straight-through processing and cleaner compliance enrichment",
+      "complexity": "medium",
+      "source_ids": ["s4"]
+    },
+    {
+      "title": "Real-time fraud monitoring assist",
+      "process_or_function": "Fraud operations",
+      "why_now": "Attack patterns move faster than rule-only monitoring.",
+      "expected_impact": "Better detection with analyst-in-the-loop review",
+      "complexity": "high",
+      "source_ids": ["s5"]
+    }
+  ],
+  "risks": [
+    {
+      "title": "Algorithmic bias in credit-adjacent workflows",
+      "category": "model",
+      "severity": "high",
+      "detail": "Models can amplify historical bias if used near lending decisions.",
+      "mitigation": "Fairness testing, explainability requirements, human override paths"
+    },
+    {
+      "title": "Model risk and regulatory lag",
+      "category": "compliance",
+      "severity": "high",
+      "detail": "AI adoption can outrun documentation, validation, and audit readiness.",
+      "mitigation": "Extend MRM to AI systems; inventory models; assign owners"
+    },
+    {
+      "title": "Legacy integration friction",
+      "category": "process",
+      "severity": "medium",
+      "detail": "Core systems were not built for real-time AI data access.",
+      "mitigation": "API layers, modular vendors, phased process redesign"
+    },
+    {
+      "title": "Third-party AI vendor dependence",
+      "category": "vendor",
+      "severity": "medium",
+      "detail": "Mid-size banks often buy capability rather than build it.",
+      "mitigation": "Due diligence on security, model controls, exit clauses, audit rights"
+    }
+  ],
+  "recommendations": [
+    {
+      "title": "Automate core back-office document workflows first",
+      "priority": "high",
+      "rationale": "Highest measurable ROI sits in loan ops, KYC/AML, payments exceptions, and disputes—not in broad brand-facing gen-AI experiments.",
+      "supporting_findings": [
+        "Industry deployments concentrate on automation and analytics in operations",
+        "Peers show value in document intelligence and straight-through processing",
+        "Efficiency gains are easiest to prove where cycle time and FTE hours are tracked"
+      ],
+      "sources": [
+        {"title": "AI in banking operations", "url": "https://www.mckinsey.com/", "id": "s2"},
+        {"title": "Bank ops automation coverage", "url": "https://www.pymnts.com/", "id": "s1"}
+      ],
+      "confidence": "high",
+      "roles": ["coo", "transformation"]
+    },
+    {
+      "title": "Stand up an AI governance and model-risk framework",
+      "priority": "high",
+      "rationale": "Without inventory, validation, and accountability, automation in regulated processes creates more risk than value.",
+      "supporting_findings": [
+        "Regulators are intensifying focus on explainability and model risk",
+        "Bias and auditability are top concerns in credit and fraud use cases"
+      ],
+      "sources": [
+        {"title": "AI risk in banking", "url": "https://www.grantthornton.com/", "id": "s6"}
+      ],
+      "confidence": "high",
+      "roles": ["risk", "coo", "transformation"]
+    },
+    {
+      "title": "Modernize data access around the core",
+      "priority": "high",
+      "rationale": "AI quality collapses without reliable operational data. Mid-size banks should invest in integration and data contracts before model sprawl.",
+      "supporting_findings": [
+        "Legacy cores are a repeated blocker in industry transformation research",
+        "Modular/API approaches reduce the need for full core replacement"
+      ],
+      "sources": [
+        {"title": "Future of midsize banks", "url": "https://www.deloitte.com/", "id": "s3"}
+      ],
+      "confidence": "high",
+      "roles": ["transformation", "coo"]
+    },
+    {
+      "title": "Use specialized vendors for speed, with strict controls",
+      "priority": "medium",
+      "rationale": "Buying focused ops AI can beat building everything in-house, if vendor risk is governed like internal model risk.",
+      "supporting_findings": [
+        "Resource-constrained banks already prefer partner models",
+        "Vendor risk becomes inherent operating risk once AI touches customer or compliance workflows"
+      ],
+      "sources": [
+        {"title": "AI/ML for small and midsize banks", "url": "https://www.infotech.com/", "id": "s7"}
+      ],
+      "confidence": "medium",
+      "roles": ["coo", "risk", "transformation"]
+    }
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "text": "Most US finance leaders are already using or planning AI for automation and analytics.",
+      "source_ids": ["s1"]
+    },
+    {
+      "id": "c2",
+      "text": "Document-heavy back-office workflows are the strongest near-term ROI zone for mid-size banks.",
+      "source_ids": ["s2", "s4"]
+    },
+    {
+      "id": "c3",
+      "text": "Legacy cores and data quality remain primary blockers to scale.",
+      "source_ids": ["s3", "s5"]
+    }
+  ],
+  "conflicts": [],
+  "confidence_notes": [
+    "Public web evidence is strong on direction and peer patterns.",
+    "Exact ROI percentages vary by institution and should be validated with internal baselines before board commitment."
+  ],
+  "sources": [
+    {"id": "s1", "title": "PYMNTS / banking AI automation coverage", "url": "https://www.pymnts.com/", "rank": 1},
+    {"id": "s2", "title": "McKinsey banking AI perspectives", "url": "https://www.mckinsey.com/", "rank": 2},
+    {"id": "s3", "title": "Deloitte midsize bank outlook", "url": "https://www.deloitte.com/", "rank": 3},
+    {"id": "s4", "title": "Banking operations automation guides", "url": "https://www.ssctech.com/", "rank": 4},
+    {"id": "s5", "title": "AI risk and fraud monitoring in banking", "url": "https://www.americanbanker.com/", "rank": 5},
+    {"id": "s6", "title": "Grant Thornton banking AI risk balance", "url": "https://www.grantthornton.com/", "rank": 6},
+    {"id": "s7", "title": "Info-Tech AI/ML for midsize banks", "url": "https://www.infotech.com/", "rank": 7}
+  ],
+  "agent_contributions": [
+    {"agent": "planner", "summary": "Scoped research to retail-bank operations transformation"},
+    {"agent": "company", "summary": "Mapped operating footprint across lending, payments, onboarding, fraud"},
+    {"agent": "industry", "summary": "Captured adoption patterns and regulatory pressure"},
+    {"agent": "news", "summary": "Pulled recent automation and gen-AI banking signals"},
+    {"agent": "competitors", "summary": "Compared JPMorgan, Bank of America, Wells Fargo, Capital One"},
+    {"agent": "opportunity", "summary": "Ranked loan ops, KYC/AML, payments, fraud opportunities"},
+    {"agent": "risk", "summary": "Flagged bias, MRM, legacy, and vendor risks"},
+    {"agent": "synthesizer", "summary": "Produced recommendations with rationales and sources"}
+  ],
+  "eval": {
+    "sources_count": 7,
+    "claims_linked": 3,
+    "recommendations_count": 4,
+    "named_competitors": 4,
+    "conflicts_count": 0,
+    "has_risk_mitigations": true,
+    "latency_note": "sample brief (instant)"
+  },
+  "roadmap": {
+    "now": ["Multi-agent research", "Source-backed recommendations", "Risk pass", "PDF export"],
+    "next": ["Worker queue + Postgres", "Internal system connectors", "Stronger claim-level citation graph"],
+    "later": ["Live operating-model sync", "Portfolio what-if simulation", "Role-based governed actions"]
+  },
+  "demo": true
+}

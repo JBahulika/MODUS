@@ -23,6 +23,7 @@ __pycache__/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
+data/uploads/
 reports/*.pdf
 reports/*.json
 !data/.gitkeep

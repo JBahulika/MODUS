@@ -23,6 +23,8 @@ ProgressCallback = Callable[[str, str], None]
 class ResearchState(TypedDict, total=False):
     query: str
     job_id: str
+    document_context: str
+    what_if: str
     plan: dict[str, Any]
     company: dict[str, Any]
     industry: dict[str, Any]
@@ -126,6 +128,15 @@ def build_graph(on_progress: ProgressCallback | None = None):
     def synthesizer_node(state: ResearchState) -> dict[str, Any]:
         base = emit("summarizing", "Synthesizing transformation brief...")
         try:
+            contributions = [
+                {"agent": "planner", "summary": "Scoped the research plan"},
+                {"agent": "company", "summary": "Gathered operating context"},
+                {"agent": "industry", "summary": "Mapped industry signals"},
+                {"agent": "news", "summary": "Collected recent news"},
+                {"agent": "competitors", "summary": "Compared named competitors"},
+                {"agent": "opportunity", "summary": "Identified AI opportunity areas"},
+                {"agent": "risk", "summary": "Checked risks and governance"},
+            ]
             report = synthesize_report(
                 query=state["query"],
                 plan=state.get("plan") or {},
@@ -135,7 +146,12 @@ def build_graph(on_progress: ProgressCallback | None = None):
                 competitors=state.get("competitors") or {},
                 opportunities=state.get("opportunities") or {},
                 risks=state.get("risks") or {},
+                document_context=state.get("document_context") or "",
+                what_if=state.get("what_if") or "",
             )
+            report["agent_contributions"] = contributions + [
+                {"agent": "synthesizer", "summary": "Merged evidence into recommendations"}
+            ]
             done = emit("done", "Brief ready.")
             return {
                 "events": base["events"] + done["events"],
@@ -179,12 +195,16 @@ def run_research(
     query: str,
     job_id: str = "",
     on_progress: ProgressCallback | None = None,
+    document_context: str = "",
+    what_if: str = "",
 ) -> dict[str, Any]:
     app = build_graph(on_progress=on_progress)
     final = app.invoke(
         {
             "query": query,
             "job_id": job_id,
+            "document_context": document_context,
+            "what_if": what_if,
             "errors": [],
             "events": [],
         }

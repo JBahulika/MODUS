@@ -9,7 +9,7 @@ from app.tools.llm import llm_json
 from app.tools.search import search_web
 
 
-SYSTEM = """You identify competitors and their AI or transformation moves.
+SYSTEM = """You identify real, named competitors and their AI or transformation moves.
 Return ONLY valid JSON:
 {
   "subject": "",
@@ -25,7 +25,11 @@ Return ONLY valid JSON:
   "comparison_summary": "",
   "sources": [{"title": "", "url": ""}]
 }
-List 4-6 competitors when possible. Be specific about AI or automation moves.
+Rules:
+- Use real organisation names only (e.g. JPMorgan Chase, Bank of America).
+- Never invent generic labels like "Leading Digital-First Retail Bank" or "Advanced Regional Bank".
+- If evidence is thin, return fewer competitors rather than fake names.
+- List 3-6 competitors when possible. Be specific about AI or automation moves.
 """
 
 

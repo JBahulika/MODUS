@@ -9,14 +9,21 @@ from app.tools.llm import llm_json
 
 
 SYSTEM = """You are an enterprise AI transformation research analyst.
-Merge the agent outputs into one decision-ready brief.
+Write a crisp, decision-ready brief. Avoid fluffy language.
 Every recommendation must include a rationale and supporting findings.
+Competitors must be real named organisations only.
 If evidence is thin, lower confidence and say what is missing.
 Return ONLY valid JSON:
 {
   "query": "",
   "subject": "",
+  "overall_confidence": "high|medium|low",
   "executive_summary": "",
+  "one_pager": {
+    "headline": "",
+    "three_moves": [],
+    "watchouts": []
+  },
   "context": {
     "industry": null,
     "company_or_subject_summary": "",
@@ -54,12 +61,15 @@ Return ONLY valid JSON:
       "rationale": "",
       "supporting_findings": [],
       "sources": [{"title": "", "url": ""}],
-      "confidence": "high|medium|low"
+      "confidence": "high|medium|low",
+      "roles": ["coo", "risk", "transformation"]
     }
   ],
+  "claims": [{"id": "c1", "text": "", "source_ids": []}],
   "conflicts": [],
   "confidence_notes": [],
-  "sources": [{"title": "", "url": ""}]
+  "sources": [{"id": "s1", "title": "", "url": ""}],
+  "what_if_assessment": ""
 }
 """
 
@@ -73,6 +83,8 @@ def synthesize_report(
     competitors: dict[str, Any],
     opportunities: dict[str, Any],
     risks: dict[str, Any],
+    document_context: str = "",
+    what_if: str = "",
 ) -> dict[str, Any]:
     subject = (
         plan.get("subject")
@@ -87,12 +99,18 @@ def synthesize_report(
         "competitors": _slim(competitors),
         "opportunities": _slim(opportunities),
         "risks": _slim(risks),
+        "uploaded_documents": document_context[:12000] if document_context else "",
+        "what_if_scenario": what_if or "",
     }
 
     try:
         data = llm_json(
             SYSTEM,
-            f"Query: {query}\nSubject: {subject}\n\nAgent outputs:\n{json.dumps(bundle, indent=2, default=str)}",
+            (
+                f"Query: {query}\nSubject: {subject}\n"
+                f"What-if scenario to assess: {what_if or 'none'}\n\n"
+                f"Agent outputs:\n{json.dumps(bundle, indent=2, default=str)}"
+            ),
             temperature=0.25,
         )
         if isinstance(data, dict):
@@ -110,12 +128,16 @@ def synthesize_report(
             data["recommendations"] = _normalize_recommendations(
                 data.get("recommendations") or []
             )
+            if what_if and not data.get("what_if_assessment"):
+                data["what_if_assessment"] = (
+                    f"Scenario considered: {what_if}. Review recommendations under this constraint."
+                )
             data["agent_raw"] = bundle
             return data
     except Exception as exc:
-        return _fallback(query, subject, company, industry, news, competitors, opportunities, risks, str(exc))
+        return _fallback(query, subject, company, industry, news, competitors, opportunities, risks, str(exc), what_if=what_if)
 
-    return _fallback(query, subject, company, industry, news, competitors, opportunities, risks, "empty synthesizer")
+    return _fallback(query, subject, company, industry, news, competitors, opportunities, risks, "empty synthesizer", what_if=what_if)
 
 
 def _normalize_recommendations(items: list[Any]) -> list[dict[str, Any]]:
@@ -131,6 +153,7 @@ def _normalize_recommendations(items: list[Any]) -> list[dict[str, Any]]:
                 "supporting_findings": item.get("supporting_findings") or [],
                 "sources": item.get("sources") or [],
                 "confidence": item.get("confidence") or "medium",
+                "roles": item.get("roles") or ["coo", "risk", "transformation"],
             }
         )
     return out
@@ -173,6 +196,7 @@ def _fallback(
     opportunities: dict[str, Any],
     risks: dict[str, Any],
     error: str,
+    what_if: str = "",
 ) -> dict[str, Any]:
     opps = opportunities.get("opportunities") or []
     recommendations = []
@@ -187,6 +211,7 @@ def _fallback(
                 "supporting_findings": [opp.get("evidence") or opp.get("process_or_function") or ""],
                 "sources": opportunities.get("sources") or [],
                 "confidence": "low",
+                "roles": ["coo", "transformation"],
             }
         )
 
@@ -220,6 +245,9 @@ def _fallback(
         "recommendations": recommendations,
         "conflicts": risks.get("conflicts") or [],
         "confidence_notes": (risks.get("confidence_notes") or []) + [error],
+        "what_if_assessment": (
+            f"Scenario considered: {what_if}" if what_if else ""
+        ),
         "sources": _merge_sources(company, industry, news, competitors, opportunities, risks),
         "agent_raw": {
             "company": _slim(company),
