@@ -115,22 +115,30 @@ def health() -> dict[str, str]:
 
 @router.post("/upload")
 async def upload_document(file: UploadFile = File(...)) -> dict[str, Any]:
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(status_code=400, detail="Empty file")
-    if len(raw) > 4_000_000:
-        raise HTTPException(status_code=400, detail="File too large (max 4MB)")
-    meta = save_upload(
-        filename=file.filename or "upload.txt",
-        content=raw,
-        content_type=file.content_type or "",
-    )
-    return {
-        "id": meta["id"],
-        "filename": meta["filename"],
-        "chars": meta["chars"],
-        "preview": meta["preview"],
-    }
+    try:
+        raw = await file.read()
+        if not raw:
+            raise HTTPException(status_code=400, detail="Empty file")
+        if len(raw) > 8_000_000:
+            raise HTTPException(status_code=400, detail="File too large (max 8MB)")
+        meta = save_upload(
+            filename=file.filename or "upload.txt",
+            content=raw,
+            content_type=file.content_type or "",
+        )
+        return {
+            "id": meta["id"],
+            "filename": meta["filename"],
+            "chars": meta["chars"],
+            "preview": meta["preview"],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not read that document. Try PDF or DOCX. ({exc})",
+        ) from exc
 
 
 @router.post("/research", response_model=ResearchStartResponse)

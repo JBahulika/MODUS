@@ -19,3 +19,4 @@ sse-starlette>=2.1.0
 aiosqlite>=0.20.0
 pypdf>=5.0.0
 python-multipart>=0.0.9
+python-docx>=1.1.0

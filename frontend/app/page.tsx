@@ -100,6 +100,7 @@ export default function HomePage() {
   const [viewMode, setViewMode] = useState<"brief" | "full">("brief");
   const [role, setRole] = useState<(typeof ROLES)[number]["id"]>("all");
   const [activeClaim, setActiveClaim] = useState<string | null>(null);
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
 
   const busy = loading && status !== "completed" && status !== "failed";
   const activeStep = events.length ? events[events.length - 1].step : status;
@@ -153,16 +154,26 @@ export default function HomePage() {
 
   async function onUpload(file: File | null) {
     if (!file) return;
-    const body = new FormData();
-    body.append("file", file);
-    const res = await fetch(`${API_URL}/upload`, { method: "POST", body });
-    if (!res.ok) {
+    setError(null);
+    setUploadNote("Uploading…");
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const res = await fetch(`${API_URL}/upload`, { method: "POST", body });
       const detail = await res.json().catch(() => ({}));
-      setError(detail.detail || "Upload failed");
-      return;
+      if (!res.ok) {
+        throw new Error(detail.detail || "Upload failed");
+      }
+      setDocs((prev) => [...prev, detail]);
+      setUploadNote(`Added ${detail.filename}`);
+    } catch (err) {
+      setUploadNote(null);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not upload that file. Try a PDF or DOCX under 8MB."
+      );
     }
-    const data = await res.json();
-    setDocs((prev) => [...prev, data]);
   }
 
   async function onSubmit(e: FormEvent) {
@@ -264,16 +275,12 @@ export default function HomePage() {
       </aside>
 
       <section className="stage">
-        <header className="hero-card">
-          <div>
-            <p className="brand-mark">Research a transformation question</p>
-            <p className="lede">
-              Pick an example below or type your own, then run research.
-            </p>
-          </div>
-        </header>
-
         <form className="composer" onSubmit={onSubmit}>
+          <p className="brand-mark">Research a transformation question</p>
+          <p className="lede">
+            Pick an example below or type your own, then run research.
+          </p>
+
           <label htmlFor="query">Query</label>
           <textarea
             id="query"
@@ -314,15 +321,29 @@ export default function HomePage() {
               <input
                 id="docs"
                 type="file"
-                accept=".pdf,.txt,.md,.docx"
+                accept=".pdf,.txt,.md,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 disabled={busy}
-                onChange={(e) => onUpload(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  const selected = e.target.files?.[0] || null;
+                  void onUpload(selected);
+                  e.target.value = "";
+                }}
               />
+              {uploadNote && <p className="upload-note">{uploadNote}</p>}
               {docs.length > 0 && (
                 <ul className="doc-list">
                   {docs.map((d) => (
                     <li key={d.id}>
-                      {d.filename} · {d.chars} chars
+                      {d.filename}
+                      <button
+                        type="button"
+                        className="text-btn"
+                        onClick={() =>
+                          setDocs((prev) => prev.filter((item) => item.id !== d.id))
+                        }
+                      >
+                        Remove
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -660,7 +681,6 @@ export default function HomePage() {
         }
 
         .rail,
-        .hero-card,
         .composer,
         .panel,
         .report,
@@ -859,11 +879,43 @@ export default function HomePage() {
           padding: 1.2rem 1.25rem;
         }
 
-        .hero-card {
+        .composer .brand-mark {
+          margin: 0;
+        }
+
+        .composer .lede {
+          margin: 0.55rem 0 1rem;
+        }
+
+        .upload-note {
+          margin: 0.4rem 0 0;
+          color: var(--accent);
+          font-size: 0.88rem;
+        }
+
+        .doc-list {
+          list-style: none;
+          padding: 0;
+          margin: 0.5rem 0 0;
+        }
+
+        .doc-list li {
           display: flex;
           justify-content: space-between;
-          gap: 1rem;
-          align-items: start;
+          gap: 0.75rem;
+          align-items: center;
+          padding: 0.45rem 0;
+          color: var(--ink-soft);
+          font-size: 0.9rem;
+        }
+
+        .text-btn {
+          border: none;
+          background: transparent;
+          color: var(--accent);
+          font-weight: 600;
+          padding: 0;
+          cursor: pointer;
         }
 
         .brand-mark {
@@ -1044,7 +1096,6 @@ export default function HomePage() {
             position: static;
           }
 
-          .hero-card,
           .report-top,
           .role-bar {
             flex-direction: column;
