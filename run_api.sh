@@ -2,4 +2,5 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 export PYTHONPATH=.
-exec uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# No --reload: file-watch restarts kill in-flight research jobs.
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000

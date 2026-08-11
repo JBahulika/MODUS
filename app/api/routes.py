@@ -194,6 +194,20 @@ def get_research(job_id: str) -> dict[str, Any]:
     return job
 
 
+@router.get("/research/{job_id}/progress")
+def research_progress(job_id: str, after_id: int = 0) -> dict[str, Any]:
+    job = sqlite_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {
+        "id": job["id"],
+        "status": job["status"],
+        "error": job.get("error"),
+        "events": sqlite_store.get_events(job_id, after_id=after_id),
+        "has_report": bool(job.get("report")),
+    }
+
+
 @router.get("/research/{job_id}/events")
 async def research_events(job_id: str) -> EventSourceResponse:
     job = sqlite_store.get_job(job_id)

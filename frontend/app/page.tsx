@@ -106,40 +106,69 @@ export default function HomePage() {
   const activeStep = events.length ? events[events.length - 1].step : status;
 
   useEffect(() => {
-    if (!jobId || status === "completed" || status === "failed") {
-      return;
-    }
-    const source = new EventSource(`${API_URL}/research/${jobId}/events`);
-    const handle = (event: MessageEvent) => {
+    if (!jobId) return;
+
+    let stopped = false;
+    let afterId = 0;
+    const seen = new Set<string>();
+
+    async function poll() {
       try {
-        const data = JSON.parse(event.data) as ProgressEvent;
-        setEvents((prev) => [...prev, data]);
-        if (data.status) setStatus(data.status);
-        if (data.step === "done" || data.step === "completed") {
-          setStatus("completed");
-          source.close();
-          void fetchReport(jobId).catch((err) => {
-            setLoading(false);
-            setError(err instanceof Error ? err.message : "Could not load the brief");
+        const res = await fetch(
+          `${API_URL}/research/${jobId}/progress?after_id=${afterId}`
+        );
+        if (!res.ok || stopped) return;
+        const data = await res.json();
+        const incoming = (data.events || []) as Array<
+          ProgressEvent & { id?: number }
+        >;
+        if (incoming.length) {
+          setEvents((prev) => {
+            const next = [...prev];
+            for (const ev of incoming) {
+              const key = `${ev.id ?? ""}-${ev.step}-${ev.message}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              next.push({
+                step: ev.step,
+                message: ev.message,
+                status: data.status,
+              });
+              if (typeof ev.id === "number" && ev.id > afterId) {
+                afterId = ev.id;
+              }
+            }
+            return next;
           });
         }
-        if (data.step === "error" || data.step === "failed") {
+        if (data.status && data.status !== "queued") {
+          setStatus(data.status);
+        }
+        if (data.status === "completed") {
+          stopped = true;
+          await fetchReport(jobId!);
+          return;
+        }
+        if (data.status === "failed") {
+          stopped = true;
           setStatus("failed");
-          setError(data.message);
-          source.close();
           setLoading(false);
+          setError(data.error || "Research failed");
         }
       } catch {
-        /* ignore */
+        /* keep polling; transient proxy hiccups are common */
       }
+    }
+
+    void poll();
+    const timer = window.setInterval(() => {
+      void poll();
+    }, 1200);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
     };
-    Object.keys(STEP_LABELS).forEach((name) =>
-      source.addEventListener(name, handle as EventListener)
-    );
-    source.addEventListener("pdf_error", handle as EventListener);
-    source.addEventListener("message", handle as EventListener);
-    return () => source.close();
-  }, [jobId, status]);
+  }, [jobId]);
 
   async function fetchReport(id: string) {
     const res = await fetch(`${API_URL}/research/${id}`);
@@ -364,6 +393,10 @@ export default function HomePage() {
               <h2>Agent timeline</h2>
               <span className="pill">{STEP_LABELS[activeStep] || activeStep}</span>
             </div>
+            <p className="wait-note">
+              Live research usually takes 2–5 minutes. Steps should keep moving
+              from planning → company/industry/news → competitors → risk → brief.
+            </p>
             <div className="timeline">
               {events.map((ev, idx) => (
                 <div key={`${ev.step}-${idx}`} className="timeline-item">
@@ -965,6 +998,13 @@ export default function HomePage() {
           font-size: 0.75rem;
           font-weight: 700;
           text-transform: uppercase;
+        }
+
+        .wait-note {
+          margin: 0.75rem 0 0;
+          color: var(--ink-soft);
+          font-size: 0.92rem;
+          line-height: 1.45;
         }
 
         .timeline {
