@@ -124,13 +124,6 @@ def generate_pdf(report: dict[str, Any], job_id: str) -> Path:
         if url and url != "—":
             story.append(Paragraph(f'<link href="{url}">{url}</link>', styles["link"]))
 
-    roadmap = report.get("roadmap") or {}
-    if roadmap:
-        story.append(Paragraph("Roadmap", styles["h1"]))
-        for key in ("now", "next", "later"):
-            story.append(Paragraph(key.title(), styles["h2"]))
-            story.append(_bullets([_safe(x) for x in (roadmap.get(key) or [])], styles))
-
     doc.build(story)
     return out_path
 

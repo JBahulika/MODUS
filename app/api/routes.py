@@ -29,7 +29,6 @@ class ResearchRequest(BaseModel):
     use_cache: bool = True
     document_ids: list[str] = Field(default_factory=list)
     what_if: str = Field(default="", max_length=400)
-    viewer: str = Field(default="guest", max_length=80)
 
 
 class ResearchStartResponse(BaseModel):
@@ -38,10 +37,6 @@ class ResearchStartResponse(BaseModel):
     status: str
     cached: bool = False
     demo: bool = False
-
-
-class SessionRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=80)
 
 
 def _is_cacheable_report(report: dict[str, Any]) -> bool:
@@ -126,12 +121,6 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.post("/session")
-def create_session(body: SessionRequest) -> dict[str, str]:
-    name = body.name.strip() or "guest"
-    return {"viewer": name, "message": f"Signed in as {name}"}
-
-
 @router.post("/upload")
 async def upload_document(file: UploadFile = File(...)) -> dict[str, Any]:
     raw = await file.read()
@@ -188,7 +177,7 @@ def start_research(
         if isinstance(cached, dict) and _is_cacheable_report(cached):
             job_id = str(uuid.uuid4())
             report = enrich_report(cached)
-            sqlite_store.create_job(job_id, query, viewer=body.viewer)
+            sqlite_store.create_job(job_id, query)
             sqlite_store.save_report(job_id, report)
             sqlite_store.add_event(job_id, "done", "Returned cached brief.")
             try:
@@ -203,7 +192,7 @@ def start_research(
             )
 
     job_id = str(uuid.uuid4())
-    sqlite_store.create_job(job_id, query, viewer=body.viewer)
+    sqlite_store.create_job(job_id, query)
     sqlite_store.add_event(job_id, "queued", f"Queued research: {query}")
     background_tasks.add_task(_run_job, job_id, query, body.document_ids, body.what_if)
     return ResearchStartResponse(
@@ -215,8 +204,8 @@ def start_research(
 
 
 @router.get("/research")
-def list_research(limit: int = 20, viewer: str | None = None) -> list[dict[str, Any]]:
-    return sqlite_store.list_jobs(limit=limit, viewer=viewer)
+def list_research(limit: int = 20) -> list[dict[str, Any]]:
+    return sqlite_store.list_jobs(limit=limit)
 
 
 @router.get("/research/{job_id}")

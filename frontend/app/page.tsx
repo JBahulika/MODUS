@@ -54,19 +54,12 @@ type Report = {
   sources?: Source[];
   agent_contributions?: Array<{ agent?: string; summary?: string }>;
   eval?: Record<string, unknown>;
-  roadmap?: { now?: string[]; next?: string[]; later?: string[] };
   what_if_assessment?: string;
   what_if?: string;
   demo?: boolean;
 };
 
 type ProgressEvent = { step: string; message: string; status?: string };
-type HistoryItem = {
-  id: string;
-  query: string;
-  status: string;
-  created_at?: string;
-};
 type UploadedDoc = { id: string; filename: string; chars: number };
 
 const STEP_LABELS: Record<string, string> = {
@@ -95,8 +88,6 @@ const ROLES = [
 ] as const;
 
 export default function HomePage() {
-  const [viewer, setViewer] = useState("guest");
-  const [viewerInput, setViewerInput] = useState("");
   const [query, setQuery] = useState(SAMPLE_QUERIES[0]);
   const [whatIf, setWhatIf] = useState("");
   const [docs, setDocs] = useState<UploadedDoc[]>([]);
@@ -110,22 +101,9 @@ export default function HomePage() {
   const [viewMode, setViewMode] = useState<"brief" | "full">("brief");
   const [role, setRole] = useState<(typeof ROLES)[number]["id"]>("all");
   const [activeClaim, setActiveClaim] = useState<string | null>(null);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
 
   const busy = loading && status !== "completed" && status !== "failed";
   const activeStep = events.length ? events[events.length - 1].step : status;
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem("modus_viewer");
-    if (saved) {
-      setViewer(saved);
-      setViewerInput(saved);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadHistory(viewer);
-  }, [viewer]);
 
   useEffect(() => {
     if (!jobId || status === "completed" || status === "failed" || jobId === "demo-retail-bank") {
@@ -160,19 +138,6 @@ export default function HomePage() {
     return () => source.close();
   }, [jobId, status]);
 
-  async function loadHistory(name: string) {
-    try {
-      const res = await fetch(
-        `${API_URL}/research?limit=8&viewer=${encodeURIComponent(name || "guest")}`
-      );
-      if (!res.ok) return;
-      const data = (await res.json()) as HistoryItem[];
-      setHistory(data);
-    } catch {
-      /* ignore */
-    }
-  }
-
   async function fetchReport(id: string) {
     const res = await fetch(`${API_URL}/research/${id}`);
     if (!res.ok) throw new Error("Failed to load report");
@@ -182,19 +147,6 @@ export default function HomePage() {
     setLoading(false);
     setOpenRec(0);
     setViewMode("brief");
-    void loadHistory(viewer);
-  }
-
-  async function signIn(e: FormEvent) {
-    e.preventDefault();
-    const name = viewerInput.trim() || "guest";
-    await fetch(`${API_URL}/session`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    }).catch(() => null);
-    window.localStorage.setItem("modus_viewer", name);
-    setViewer(name);
   }
 
   async function loadDemo() {
@@ -250,7 +202,6 @@ export default function HomePage() {
           use_cache: false,
           document_ids: docs.map((d) => d.id),
           what_if: whatIf.trim(),
-          viewer,
         }),
       });
       if (!res.ok) {
@@ -270,12 +221,6 @@ export default function HomePage() {
     }
   }
 
-  async function openHistory(id: string) {
-    setJobId(id);
-    setLoading(true);
-    await fetchReport(id);
-  }
-
   const filteredRecs = useMemo(() => {
     const recs = report?.recommendations || [];
     if (role === "all") return recs;
@@ -293,65 +238,48 @@ export default function HomePage() {
   return (
     <main className="shell">
       <aside className="rail">
-        <p className="eyebrow">Prototype</p>
+        <p className="eyebrow">Enterprise research</p>
         <h1>Enterprise AI Research Agent</h1>
         <p className="rail-copy">
-          Ask a transformation question. Specialist agents gather evidence,
-          check risk, and return a brief you can defend.
+          Type a transformation question. The system researches it, checks
+          risks, and returns a short brief with sources.
         </p>
 
+        <div className="help">
+          <button type="button" className="help-btn" aria-describedby="how-help">
+            How this works
+            <span className="tip" id="how-help" role="tooltip">
+              You give it a business question about AI or transformation.
+              Different agents look up company context, industry trends, news,
+              competitors, and opportunities. Then it writes a brief with
+              recommendations and the sources behind them.
+              <br />
+              <br />
+              Best inputs: a company or industry + the process you care about.
+              Example: “AI opportunities in loan operations for a mid-size
+              retail bank.” You can also upload a short internal note and add a
+              what-if like “budget is frozen for a year.”
+            </span>
+          </button>
+        </div>
+
         <div className="walk">
-          <p>How it works</p>
+          <p>Flow</p>
           <ol>
-            <li>Plan the research</li>
-            <li>Gather company, industry, news</li>
-            <li>Compare competitors and opportunities</li>
-            <li>Risk check, then synthesize</li>
+            <li>You ask a question</li>
+            <li>Agents gather evidence</li>
+            <li>Risk check runs</li>
+            <li>You get a brief with sources</li>
           </ol>
         </div>
 
-        <form className="signin" onSubmit={signIn}>
-          <label htmlFor="viewer">Viewer</label>
-          <div className="inline">
-            <input
-              id="viewer"
-              value={viewerInput}
-              onChange={(e) => setViewerInput(e.target.value)}
-              placeholder="Your name"
-            />
-            <button type="submit">Save</button>
-          </div>
-          <small>Saved as {viewer}. History stays with this viewer.</small>
-        </form>
-
-        <div className="history">
-          <div className="history-head">
-            <strong>History</strong>
-            <button type="button" className="text-btn" onClick={() => loadHistory(viewer)}>
-              Refresh
-            </button>
-          </div>
-          {history.length === 0 ? (
-            <p className="muted">No saved briefs yet.</p>
-          ) : (
-            <ul>
-              {history.map((item) => (
-                <li key={item.id}>
-                  <button type="button" onClick={() => openHistory(item.id)}>
-                    <span>{item.query}</span>
-                    <em>{item.status}</em>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="roadmap-box">
-          <strong>Roadmap</strong>
-          <p>Now: multi-agent brief, sources, risk, PDF</p>
-          <p>Next: workers, Postgres, system connectors</p>
-          <p>Later: live operating-model sync</p>
+        <div className="walk">
+          <p>What to enter</p>
+          <ul>
+            <li>Company or industry</li>
+            <li>Process or function to improve</li>
+            <li>Optional: a document or what-if</li>
+          </ul>
         </div>
       </aside>
 
@@ -360,8 +288,7 @@ export default function HomePage() {
           <div>
             <p className="brand-mark">Research a transformation question</p>
             <p className="lede">
-              Instant sample brief available. Or run a live research job with
-              optional documents and a what-if scenario.
+              Start with the sample brief, or run a live research job.
             </p>
           </div>
           <button type="button" className="ghost" onClick={loadDemo} disabled={busy}>
@@ -378,6 +305,7 @@ export default function HomePage() {
             onChange={(e) => setQuery(e.target.value)}
             disabled={busy}
             required
+            placeholder="Company or industry + the process you want to improve"
           />
           <div className="chips">
             {SAMPLE_QUERIES.map((sample) => (
@@ -400,7 +328,7 @@ export default function HomePage() {
                 id="whatif"
                 value={whatIf}
                 onChange={(e) => setWhatIf(e.target.value)}
-                placeholder="e.g. the bank freezes hiring for 12 months"
+                placeholder="Optional, e.g. hiring freeze for 12 months"
                 disabled={busy}
               />
             </div>
@@ -501,7 +429,10 @@ export default function HomePage() {
                   (report.confidence_score || 0.6) * 100
                 )}%`}
               />
-              <Metric label="Sources" value={String(report.eval?.sources_count ?? report.sources?.length ?? 0)} />
+              <Metric
+                label="Sources"
+                value={String(report.eval?.sources_count ?? report.sources?.length ?? 0)}
+              />
               <Metric label="Claims linked" value={String(report.eval?.claims_linked ?? 0)} />
               <Metric
                 label="Competitors"
@@ -734,25 +665,6 @@ export default function HomePage() {
                 ))}
               </ol>
             </Block>
-
-            {report.roadmap && (
-              <Block title="Product roadmap">
-                <div className="three-col">
-                  <div>
-                    <h4>Now</h4>
-                    <List items={report.roadmap.now} />
-                  </div>
-                  <div>
-                    <h4>Next</h4>
-                    <List items={report.roadmap.next} />
-                  </div>
-                  <div>
-                    <h4>Later</h4>
-                    <List items={report.roadmap.later} />
-                  </div>
-                </div>
-              </Block>
-            )}
           </div>
         )}
       </section>
@@ -775,7 +687,6 @@ export default function HomePage() {
         .composer,
         .panel,
         .report,
-        .block,
         .one-pager {
           background: rgba(255, 250, 242, 0.88);
           border: 1px solid var(--line);
@@ -788,15 +699,12 @@ export default function HomePage() {
           position: sticky;
           top: 1rem;
           align-self: start;
-          max-height: calc(100vh - 2rem);
-          overflow: auto;
         }
 
         .rail h1,
         .report h2,
         .brand-mark,
         .one-pager h3,
-        .block h3,
         .mini h4 {
           font-family: var(--font-display);
           letter-spacing: -0.03em;
@@ -810,8 +718,6 @@ export default function HomePage() {
 
         .rail-copy,
         .lede,
-        .muted,
-        small,
         .timeline p,
         .rec-body p,
         .mini p {
@@ -828,17 +734,56 @@ export default function HomePage() {
           color: var(--accent-2);
         }
 
-        .walk,
-        .roadmap-box,
-        .history,
-        .signin {
+        .help {
+          margin-top: 1rem;
+        }
+
+        .help-btn {
+          position: relative;
+          border: 1px solid var(--line);
+          background: #fff;
+          border-radius: 999px;
+          padding: 0.55rem 0.9rem;
+          font-weight: 600;
+          cursor: help;
+        }
+
+        .tip {
+          display: none;
+          position: absolute;
+          left: 0;
+          top: calc(100% + 0.55rem);
+          width: min(280px, 70vw);
+          padding: 0.85rem 0.9rem;
+          border-radius: 14px;
+          background: #1c1914;
+          color: #f7f1e6;
+          font-size: 0.86rem;
+          font-weight: 400;
+          line-height: 1.45;
+          z-index: 20;
+          box-shadow: var(--shadow);
+          text-align: left;
+        }
+
+        .help-btn:hover .tip,
+        .help-btn:focus .tip {
+          display: block;
+        }
+
+        .walk {
           margin-top: 1.1rem;
           padding-top: 1rem;
           border-top: 1px solid var(--line);
         }
 
+        .walk p {
+          margin: 0;
+          font-weight: 700;
+        }
+
         .walk ol,
-        .history ul,
+        .walk ul,
         .doc-list,
         .sources,
         .risk-list,
@@ -848,43 +793,26 @@ export default function HomePage() {
           color: var(--ink-soft);
         }
 
-        .inline,
         .report-actions,
         .role-bar,
-        .metrics,
-        .grid-2,
-        .two-col,
-        .three-col,
-        .cards,
-        .contrib,
-        .source-row,
-        .claim-sources {
+        .claim-sources,
+        .source-row {
           display: flex;
           gap: 0.65rem;
         }
 
-        .inline {
-          margin-top: 0.35rem;
-        }
-
         .grid-2,
         .two-col,
-        .three-col,
         .cards,
         .contrib,
         .metrics {
           display: grid;
+          gap: 0.85rem;
         }
 
         .grid-2,
         .two-col {
           grid-template-columns: 1fr 1fr;
-          gap: 0.85rem;
-        }
-
-        .three-col,
-        .metrics {
-          grid-template-columns: repeat(3, 1fr);
         }
 
         .metrics {
@@ -927,7 +855,6 @@ export default function HomePage() {
 
         .ghost,
         .chip,
-        .text-btn,
         .seg button,
         .rec-head,
         .claim {
@@ -940,13 +867,6 @@ export default function HomePage() {
           border: 1px solid var(--line);
           border-radius: 999px;
           padding: 0.55rem 0.9rem;
-        }
-
-        .text-btn {
-          border: none;
-          color: var(--accent);
-          padding: 0;
-          font-weight: 600;
         }
 
         .stage {
@@ -999,8 +919,7 @@ export default function HomePage() {
         }
 
         .panel-head,
-        .report-top,
-        .history-head {
+        .report-top {
           display: flex;
           justify-content: space-between;
           gap: 1rem;
@@ -1038,27 +957,6 @@ export default function HomePage() {
           animation: pulseDot 1.4s ease infinite;
         }
 
-        .metric {
-          background: var(--paper-2);
-          border: 1px solid var(--line);
-          border-radius: 16px;
-          padding: 0.8rem;
-        }
-
-        .metric span {
-          display: block;
-          font-size: 0.75rem;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-          color: var(--ink-soft);
-        }
-
-        .metric strong {
-          display: block;
-          margin-top: 0.25rem;
-          font-size: 1rem;
-        }
-
         .one-pager,
         .block {
           border-radius: 18px;
@@ -1066,7 +964,6 @@ export default function HomePage() {
           margin-top: 0.85rem;
           border: 1px solid var(--line);
           background: rgba(255, 255, 255, 0.55);
-          box-shadow: none;
         }
 
         .seg {
@@ -1157,23 +1054,6 @@ export default function HomePage() {
           background: #fff;
         }
 
-        .history button {
-          width: 100%;
-          text-align: left;
-          border: 1px solid var(--line);
-          border-radius: 12px;
-          background: #fff;
-          padding: 0.65rem 0.75rem;
-          margin-top: 0.4rem;
-        }
-
-        .history em {
-          display: block;
-          color: var(--ink-soft);
-          font-style: normal;
-          font-size: 0.78rem;
-        }
-
         .error {
           border-color: rgba(143, 45, 45, 0.3);
         }
@@ -1185,7 +1065,6 @@ export default function HomePage() {
 
           .rail {
             position: static;
-            max-height: none;
           }
 
           .hero-card,
@@ -1197,7 +1076,6 @@ export default function HomePage() {
 
           .grid-2,
           .two-col,
-          .three-col,
           .metrics {
             grid-template-columns: 1fr 1fr;
           }
@@ -1206,7 +1084,6 @@ export default function HomePage() {
         @media (max-width: 640px) {
           .grid-2,
           .two-col,
-          .three-col,
           .metrics {
             grid-template-columns: 1fr;
           }
@@ -1225,13 +1102,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Block({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="block">
       <h3>{title}</h3>

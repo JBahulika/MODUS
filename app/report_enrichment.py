@@ -24,14 +24,10 @@ def enrich_report(report: dict[str, Any], *, latency_ms: int | None = None) -> d
     report["one_pager"] = report.get("one_pager") or _one_pager(report)
     report["agent_contributions"] = report.get("agent_contributions") or []
     report["eval"] = _build_eval(report, latency_ms=latency_ms)
-    report["roadmap"] = report.get("roadmap") or {
-        "now": ["Multi-agent research", "Source-backed recommendations", "Risk pass", "PDF export"],
-        "next": ["Worker queue + Postgres", "Internal system connectors", "Claim-level citation graph"],
-        "later": ["Live operating-model sync", "Portfolio what-if simulation", "Role-based governed actions"],
-    }
     report["recommendations"] = [
         _normalize_rec(rec) for rec in (report.get("recommendations") or []) if isinstance(rec, dict)
     ]
+    report.pop("roadmap", None)
     return report
 
 
