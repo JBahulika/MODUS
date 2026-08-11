@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     llm_model: str = "gemini-2.5-flash"
     data_dir: str = "./data"
     reports_dir: str = "./reports"
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
 
     @property
     def data_path(self) -> Path:

@@ -20,10 +20,14 @@ def create_app() -> FastAPI:
         ),
         version="1.0.0",
     )
+    # Local prototype: allow any localhost / 127.0.0.1 port.
+    # Credentials are off so wildcard / regex CORS works reliably in the browser.
+    origins = settings.cors_origin_list
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origin_list or ["*"],
-        allow_credentials=True,
+        allow_origins=origins if origins and origins != ["*"] else ["*"],
+        allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )

@@ -2,7 +2,7 @@
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "/backend";
 
 const SAMPLE_QUERIES = [
   "AI transformation opportunities for a mid-size retail bank in operations",
@@ -168,10 +168,12 @@ export default function HomePage() {
       setUploadNote(`Added ${detail.filename}`);
     } catch (err) {
       setUploadNote(null);
+      const message =
+        err instanceof Error ? err.message : "Could not upload that file.";
       setError(
-        err instanceof Error
-          ? err.message
-          : "Could not upload that file. Try a PDF or DOCX under 8MB."
+        message === "Failed to fetch"
+          ? "Could not reach the API. Keep the backend running, then refresh this page and try again."
+          : message
       );
     }
   }
